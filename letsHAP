@@ -142,8 +142,13 @@ _create_haproxy_fullchain (){
 		exit 1
 	fi
 	fullchainFile=${WORKING_DIR}/archive/${domain}/fullchain_haproxy.pem
-	echo -n "Creating HAPROXY fullchain file for domain ${domain}... "
-	touch ${fullchainFile} && echo OK || echo NOK
+	echo "Creating HAPROXY fullchain file for domain ${domain}... "
+        for file in cert.pem chain.pem privkey.pem
+        do
+	        echo -n "cat $file : "
+        	cat ${LETS_LIVE_PATH}/${domain}/$file >> ${LETS_ARCH_PATH}/${domain}/fullchain_haproxy.pem && echo -n "OK " || echo -n "NOK - "
+                echo
+	done
 	echo -n "Creating symlink in live directory... "
 	ln -s ${fullchainFile} ${WORKING_DIR}/live/${domain}/ && echo OK || echo NOK
 	echo -n "Adding line in ${HAPX_CERTLIST}... "
