@@ -58,9 +58,9 @@ check_argv1_f
 ### GLOBALS ###
 ###############
 DATE=$(date +%Y%m%d-%H%M%S)
-REGISTERING_EMAIL=''
 WORKING_DIR="/etc/letsencrypt"
-HAPX_CERTLIST='/etc/letsencrypt/ssl.lst'
+HAPX_CERTDIR='/etc/haproxy/ssl'
+HAPX_CERTLIST='/etc/haproxy/ssl/ssl.lst'
 LETS_LIVE_PATH='/etc/letsencrypt/live'
 LETS_ARCH_PATH='/etc/letsencrypt/archive'
 INSTALLED_DOMAINS="$(ls -d ${LETS_LIVE_PATH}/* | cut -d'/' -f 5)"
@@ -109,9 +109,6 @@ _register(){
 	if [[ -z "${REGISTERING_EMAIL}" ]] 
 	then
 		func_usage
-		echo
-		echo "Please edit letsHAP and add your email in REGISTERING_EMAIL variable"
-		echo
 		exit 1
 	else
 			certbot register --agree-tos -m ${email}
@@ -139,7 +136,7 @@ _add_cert_for_domain (){
 
 _create_haproxy_fullchain (){
 	domain="${1}"
-	if [ ! -f "${WORKING_DIR}/archive/${domain}/" ]
+	if [ ! -d "${WORKING_DIR}/archive/${domain}" ]
 	then 
 		echo "Domain ${domain} has no certificate installed on this server - exit"
 		exit 1
@@ -150,7 +147,7 @@ _create_haproxy_fullchain (){
 	echo -n "Creating symlink in live directory... "
 	ln -s ${fullchainFile} ${WORKING_DIR}/live/${domain}/ && echo OK || echo NOK
 	echo -n "Adding line in ${HAPX_CERTLIST}... "
-	echo "/etc/letsencrypt/live/${domain}/fullchain_haproxy.pem ${domain}" >> ${HAPX_CERTLIST} && echo OK || echo NOK
+	echo "${WORKING_DIR}/live/${domain}/fullchain_haproxy.pem ${domain}" >> ${HAPX_CERTLIST} && echo OK || echo NOK
 	# We restart haproxy for immediate production of the domain
 	restart_haproxy
 }
@@ -227,15 +224,14 @@ _update_haproxy_fullchains (){
 #### ACTION ####
 ################
 
-# Normally, deprecated
-if [[ ! -d "${WORKING_DIR}" ]]
+# Create HAProxy ssl list file DIR
+if [[ ! -d "${HAPX_CERTDIR}" ]]
 then
-	read -p "Do you want to create ${WORKING_DIR} ? [y/N]" yn
-	yn=${yn:N}
+	read -p "Do you want to create ${HAPX_CERTDIR} ? [Y/n]" yn
+	yn=${yn:Y}
 	case $yn in
         	[Yy]* ) 
-			mkdir -p ${LETS_LIVE_PATH} 
-			mkdir -p ${LETS_ARCH_PATH}
+			mkdir -p ${HAPX_CERTDIR} 
 			;;
 
 	        [Nn]* ) 
