@@ -161,6 +161,7 @@ _create_haproxy_fullchain (){
 _renew_domains(){
 	echo "**** Renewing all domains **** "
 	renew=$(certbot renew --http-01-port 63443)
+	#renew=$(certbot renew --standalone --preferred-challenges ${PREFERRED_CHALLENGE} --${CERTBOT_BK_NAME} ${BK_PORT})
 	is_success=$(echo $?)
 	if [ "$is_success" = '0' ]
 	then
