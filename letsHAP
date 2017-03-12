@@ -199,6 +199,16 @@ _update_haproxy_fullchains (){
 ################
 #### ACTION ####
 ################
+if [[ ! -d "${WORKING_DIR}" ]]
+then
+	read -p "Do you want to create ${WORKING_DIR} ? [y/N]" yn
+	case $yn in
+        	[Yy]* ) echo OK ;;
+	        [Nn]* ) exit;;
+ 	       * ) echo "Please answer yes or no." ; exit ;;
+	esac
+fi
+	
         case $todo in
                 add)
                 	_add_cert_for_domain ${domainToAdd}
