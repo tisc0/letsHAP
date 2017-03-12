@@ -202,10 +202,21 @@ _update_haproxy_fullchains (){
 if [[ ! -d "${WORKING_DIR}" ]]
 then
 	read -p "Do you want to create ${WORKING_DIR} ? [y/N]" yn
+	yn=${yn:N}
 	case $yn in
-        	[Yy]* ) mkdir -p ${WORKING_DIR} ;;
-	        [Nn]* ) exit ;;
- 	       * ) echo "Please answer y or n." ; exit ;;
+        	[Yy]* ) 
+			mkdir -p ${LETS_LIVE_PATH} 
+			mkdir -p ${LETS_ARCH_PATH}
+			;;
+
+	        [Nn]* ) 
+			exit 
+			;;
+
+ 	       * ) 
+		      	echo " ~~ 0_o ~~ " 
+			exit
+			;;
 	esac
 fi
 	
