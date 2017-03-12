@@ -1,0 +1,220 @@
+#!/usr/bin/env sh
+
+##################################################
+### letshap - David S. - 2016, 1st of October  ###
+##################################################
+
+###
+### That program need you to create a specific backend 
+### in haproxy's configfile.
+###
+
+# Help
+func_usage(){
+cat << EOF
+ ~ Usage : $0 [Option] [domain]
+
+Options:
+--------
+# Options
+-a  |--add
+* Add certs files for the domain
+* Create renewal config file for that domain
+* Add and refresh HAPROXY's ssl cert list
+* HAPROXY : Check config file && restart
+
+-ra |--renew-all : 
+* renew what's needed for renewed domains
+
+-rev|--revoke
+
+NOTES : 
+
+--add is still not enable
+--revoke is still not enable
+
+...
+
+EOF
+}
+
+var1="$1"
+var2="$2"
+
+# We need at least 1 argument (--renew-all)
+check_argv1_f(){
+        if [[ ("${var1}" == '') || ("${var2}" == '') ]]
+        then
+                func_usage
+                exit 1
+        fi
+}
+# Check vars
+check_argv1_f
+
+###############
+### GLOBALS ###
+###############
+DATE=$(date +%Y%m%d-%H%M%S)
+WORKING_DIR="/etc/letsencrypt"
+HAPX_CERTLIST='/etc/letsencrypt/ssl.lst'
+LETS_LIVE_PATH='/etc/letsencrypt/live'
+LETS_ARCH_PATH='/etc/letsencrypt/archive'
+INSTALLED_DOMAINS="$(ls -d ${LETS_LIVE_PATH}/* | cut -d'/' -f 5)"
+OUTPUT_RD="${WORKING_DIR}/renewal/autorenew_domains.${DATE}"
+CERTBOT_BK_NAME="http-01-port"
+BK_PORT='63443'
+
+# Else, we define more precisely the case of action
+
+case ${var1} in
+        -a |--add)
+                todo="add"
+                shift
+		domainToAdd="${var2}"
+        ;;
+        -ra |--renew-all)
+                todo="renew-all"
+                shift
+        ;;
+        -rev|--revoke)
+                todo="revoke"
+                shift
+		domainToRevoke="${var2}"
+        ;;
+        *)
+                func_usage
+        ;;
+esac
+
+
+#################
+### FUNCTIONS ###
+#################
+_add_cert_for_domain (){
+	myDomain="$1"
+	# the magic
+	echo -n "Let's create your cert for $myDomain... "
+	create_cert=$(certbot certonly --noninteractive -d ${myDomain} --${CERTBOT_BK_NAME} ${BK_PORT})
+        is_success=$(echo $?)
+        if [ "$is_success" = '0' ]
+        then
+                echo "OK"
+		echo -n "Updating HAPROXY certlist... "
+		
+        else
+                echo "NOK - exit"
+		echo $create_cert
+                exit 1
+        fi
+
+}
+
+_create_haproxy_fullchain (){
+	domain="${1}"
+	if [ ! -f "${WORKING_DIR}/archive/${domain}/" ]
+	then 
+		echo "Domain ${domain} has no certificate installed on this server - exit"
+		exit 1
+	fi
+	fullchainFile=${WORKING_DIR}/archive/${domain}/fullchain_haproxy.pem
+	echo -n "Creating HAPROXY fullchain file for domain ${domain}... "
+	touch ${fullchainFile} && echo OK || echo NOK
+	echo -n "Creating symlink in live directory... "
+	ln -s ${fullchainFile} ${WORKING_DIR}/live/${domain}/ && echo OK || echo NOK
+	echo -n "Adding line in ${HAPX_CERTLIST}... "
+	echo "/etc/letsencrypt/live/${domain}/fullchain_haproxy.pem ${domain}" >> ${HAPX_CERTLIST} && echo OK || echo NOK
+	# We restart haproxy for immediate production of the domain
+	restart_haproxy
+}
+
+_renew_domains(){
+	echo "**** Renewing all domains **** "
+	renew=$(certbot renew --http-01-port 63443)
+	is_success=$(echo $?)
+	if [ "$is_success" = '0' ]
+	then
+		echo "$renew" > ${OUTPUT_RD}
+		echo "OK" 
+	else
+		echo "NOK - exit"
+		exit 1
+	fi
+
+}
+
+_restart_haproxy (){
+	check_conf=$(/usr/sbin/haproxy -f /etc/haproxy/haproxy.cfg -c)
+	is_success=$(echo $?)
+	if [ $is_success -eq '0' ]
+	then
+		echo -n "Restarting haproxy (stop & start)... "
+		systemctl stop haproxy.service || echo -n "(Problem while stopping haproxy.service)... "
+		systemctl start haproxy.service && echo OK || echo NOK
+	else
+		echo "Problem with HAPROXY config file - exit"
+		exit 1
+	fi
+}
+
+_update_haproxy_fullchains (){
+	myOutputFile="$1"
+	fullchainsToRenew=$( cat ${myOutputFile} | grep letsencrypt | grep success | awk '{print $1}')
+	if [ "$fullchainsToRenew" != '' ]
+	then
+		echo "*** Renewing fullchains for HAPROXY ***"
+		for cert in $fullchainsToRenew
+		do
+			echo "Fullchain to renew -> $cert"
+			fqdn=$(echo $cert | cut -d'/' -f 5)
+			# Backup the old fullchain file and freeing the file
+			echo -n "Backup the old fullchain file of $fqdn : "
+			fullchain_file="/etc/letsencrypt/archive/$fqdn/fullchain_haproxy.pem"
+			if [ -f "${fullchain_file}" ]
+			then
+				mv ${LETS_ARCH_PATH}/$fqdn/fullchain_haproxy.pem ${LETS_ARCH_PATH}/$fqdn/fullchain_haproxy.pem.$DATE && echo OK || echo NOK
+			else
+				echo "doesn't exist - next"
+			fi
+
+			# generate the new one
+			echo "Generating the new one... "
+			for file in cert.pem chain.pem privkey.pem
+			do
+				echo -n "cat $file : "
+				cat ${LETS_LIVE_PATH}/${fqdn}/$file >> ${LETS_ARCH_PATH}/$fqdn/fullchain_haproxy.pem && echo -n "OK " || echo -n "NOK - "
+				echo
+			done
+		done
+
+		# We need to restart HAPROXY, of course
+		_restart_haproxy
+
+	else
+		echo "Nothing to update - exit"
+		exit 0
+	fi
+}
+
+################
+#### ACTION ####
+################
+        case $todo in
+                add)
+                	_add_cert_for_domain ${domainToAdd}
+			_create_haproxy_fullchain ${domainToAdd}
+                ;;
+
+                renew-all)
+			_renew_domains
+                        _update_haproxy_fullchains $OUTPUT_RD
+                ;;
+
+                revoke)
+                        echo "Function revoke haven't been coded yet"
+                ;;
+                *)
+                        func_usage
+                ;;
+        esac
+
