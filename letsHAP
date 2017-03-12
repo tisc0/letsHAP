@@ -152,6 +152,7 @@ _create_haproxy_fullchain (){
 	echo -n "Creating symlink in live directory... "
 	ln -s ${fullchainFile} ${WORKING_DIR}/live/${domain}/ && echo OK || echo NOK
 	echo -n "Adding line in ${HAPX_CERTLIST}... "
+	sed -i "/${domain}/d" ${HAPX_CERTLIST}
 	echo "${WORKING_DIR}/live/${domain}/fullchain_haproxy.pem ${domain}" >> ${HAPX_CERTLIST} && echo OK || echo NOK
 	# We restart haproxy for immediate production of the domain
 	_restart_haproxy
