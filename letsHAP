@@ -65,6 +65,7 @@ LETS_LIVE_PATH='/etc/letsencrypt/live'
 LETS_ARCH_PATH='/etc/letsencrypt/archive'
 INSTALLED_DOMAINS="$(ls -d ${LETS_LIVE_PATH}/* | cut -d'/' -f 5)"
 OUTPUT_RD="${WORKING_DIR}/renewal/autorenew_domains.${DATE}"
+PREFERRED_CHALLENGE='http-01'
 CERTBOT_BK_NAME="http-01-port"
 BK_PORT='63443'
 
@@ -121,7 +122,7 @@ _add_cert_for_domain (){
 	myDomain="$1"
 	# the magic
 	echo -n "Let's create your cert for $myDomain... "
-	create_cert=$(certbot certonly --standalone --noninteractive -d ${myDomain} --${CERTBOT_BK_NAME} ${BK_PORT})
+	create_cert=$(certbot certonly --standalone --preferred-challenges ${PREFERRED_CHALLENGE} --${CERTBOT_BK_NAME} ${BK_PORT} --noninteractive -d ${myDomain}})
         is_success=$(echo $?)
         if [ "$is_success" = '0' ]
         then
