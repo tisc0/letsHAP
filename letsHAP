@@ -12,11 +12,17 @@
 # Help
 func_usage(){
 cat << EOF
+
  ~ Usage : $0 [Option] [domain]
+
+ Beware : First start, you have to run $0 --register
 
 Options:
 --------
 # Options
+-re | --register
+* Create /etc/letsencrypt directory after creating your account on let's Encrypt
+
 -a  |--add
 * Add certs files for the domain
 * Create renewal config file for that domain
@@ -68,23 +74,26 @@ BK_PORT='63443'
 # Else, we define more precisely the case of action
 
 case ${var1} in
+	-re | --register)
+		todo='register'
+		;;
         -a |--add)
                 todo="add"
                 shift
 		domainToAdd="${var2}"
-        ;;
+        	;;
         -ra |--renew-all)
                 todo="renew-all"
                 shift
-        ;;
+        	;;
         -rev|--revoke)
                 todo="revoke"
                 shift
 		domainToRevoke="${var2}"
-        ;;
+        	;;
         *)
                 func_usage
-        ;;
+        	;;
 esac
 
 
@@ -95,7 +104,7 @@ _add_cert_for_domain (){
 	myDomain="$1"
 	# the magic
 	echo -n "Let's create your cert for $myDomain... "
-	create_cert=$(certbot certonly --noninteractive -d ${myDomain} --${CERTBOT_BK_NAME} ${BK_PORT})
+	create_cert=$(certbot certonly --standalone --noninteractive -d ${myDomain} --${CERTBOT_BK_NAME} ${BK_PORT})
         is_success=$(echo $?)
         if [ "$is_success" = '0' ]
         then
@@ -199,6 +208,8 @@ _update_haproxy_fullchains (){
 ################
 #### ACTION ####
 ################
+
+# Normally, deprecated
 if [[ ! -d "${WORKING_DIR}" ]]
 then
 	read -p "Do you want to create ${WORKING_DIR} ? [y/N]" yn
@@ -221,6 +232,9 @@ then
 fi
 	
         case $todo in
+		register)
+			certbot register --agree-tos -m $REGISTERING_EMAIL
+			;;
                 add)
                 	_add_cert_for_domain ${domainToAdd}
 			_create_haproxy_fullchain ${domainToAdd}
