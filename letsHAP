@@ -203,9 +203,9 @@ if [[ ! -d "${WORKING_DIR}" ]]
 then
 	read -p "Do you want to create ${WORKING_DIR} ? [y/N]" yn
 	case $yn in
-        	[Yy]* ) echo OK ;;
-	        [Nn]* ) exit;;
- 	       * ) echo "Please answer yes or no." ; exit ;;
+        	[Yy]* ) mkdir -p ${WORKING_DIR} ;;
+	        [Nn]* ) exit ;;
+ 	       * ) echo "Please answer y or n." ; exit ;;
 	esac
 fi
 	
