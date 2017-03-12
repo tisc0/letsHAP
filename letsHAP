@@ -13,17 +13,17 @@
 func_usage(){
 cat << EOF
 
- ~ Usage : $0 [Option] [domain]
+ ~ Usage : $0 [Option] [PARAM]
 
- Beware : First start, you have to run $0 --register
+ Beware : First start, you have to run $0 --register [EMAIL]
 
-Options:
---------
-# Options
--re | --register
+Options
+-------
+
+-re | --register [EMAIL]
 * Create /etc/letsencrypt directory after creating your account on let's Encrypt
 
--a  |--add
+-a  |--add [DOMAIN]
 * Add certs files for the domain
 * Create renewal config file for that domain
 * Add and refresh HAPROXY's ssl cert list
@@ -32,12 +32,8 @@ Options:
 -ra |--renew-all : 
 * renew what's needed for renewed domains
 
--rev|--revoke
-
-NOTES : 
-
---add is still not enable
---revoke is still not enable
+-rev|--revoke [DOMAIN]
+* to be coded... any help welcome
 
 ...
 
@@ -62,6 +58,7 @@ check_argv1_f
 ### GLOBALS ###
 ###############
 DATE=$(date +%Y%m%d-%H%M%S)
+REGISTERING_EMAIL=''
 WORKING_DIR="/etc/letsencrypt"
 HAPX_CERTLIST='/etc/letsencrypt/ssl.lst'
 LETS_LIVE_PATH='/etc/letsencrypt/live'
@@ -76,6 +73,8 @@ BK_PORT='63443'
 case ${var1} in
 	-re | --register)
 		todo='register'
+		shift
+		REGISTERING_EMAIL="${1}"
 		;;
         -a |--add)
                 todo="add"
@@ -91,6 +90,9 @@ case ${var1} in
                 shift
 		domainToRevoke="${var2}"
         	;;
+	-h| --help)
+		func_usage
+		;;
         *)
                 func_usage
         	;;
@@ -100,6 +102,21 @@ esac
 #################
 ### FUNCTIONS ###
 #################
+
+_register(){
+	email="${1}"
+	if [[ -z "${REGISTERING_EMAIL}" ]] 
+	then
+		func_usage
+		echo
+		echo "Please edit letsHAP and add your email in REGISTERING_EMAIL variable"
+		echo
+		exit 1
+	else
+			certbot register --agree-tos -m ${email}
+	fi
+}
+
 _add_cert_for_domain (){
 	myDomain="$1"
 	# the magic
@@ -233,7 +250,7 @@ fi
 	
         case $todo in
 		register)
-			certbot register --agree-tos -m $REGISTERING_EMAIL
+			_register ${REGISTERING_EMAIL}
 			;;
                 add)
                 	_add_cert_for_domain ${domainToAdd}
