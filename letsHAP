@@ -122,7 +122,7 @@ _add_cert_for_domain (){
 	myDomain="$1"
 	# the magic
 	echo -n "Let's create your cert for $myDomain... "
-	create_cert=$(certbot certonly --standalone --preferred-challenges ${PREFERRED_CHALLENGE} --${CERTBOT_BK_NAME} ${BK_PORT} --noninteractive -d ${myDomain}})
+	create_cert=$(certbot certonly --standalone --preferred-challenges ${PREFERRED_CHALLENGE} --${CERTBOT_BK_NAME} ${BK_PORT} --noninteractive -d ${myDomain})
         is_success=$(echo $?)
         if [ "$is_success" = '0' ]
         then
