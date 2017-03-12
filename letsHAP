@@ -149,7 +149,7 @@ _create_haproxy_fullchain (){
 	echo -n "Adding line in ${HAPX_CERTLIST}... "
 	echo "${WORKING_DIR}/live/${domain}/fullchain_haproxy.pem ${domain}" >> ${HAPX_CERTLIST} && echo OK || echo NOK
 	# We restart haproxy for immediate production of the domain
-	restart_haproxy
+	_restart_haproxy
 }
 
 _renew_domains(){
