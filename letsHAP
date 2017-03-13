@@ -45,7 +45,7 @@ var2="$2"
 
 # We need at least 1 argument (--renew-all)
 check_argv1_f(){
-        if [[ ("${var1}" == '')i ]]
+        if [[ ("${var1}" == '') ]]
         then
                 func_usage
 		echo "Parameter's missing ; at least one is needed - exit"
