@@ -20,12 +20,15 @@ Options
 -a  |--add [DOMAIN]
 * Add certs files for the domain
 * Create renewal config file for that domain
-* Add and refresh HAPROXY's ssl cert list
-* HAPROXY : Check config file && restart
+* Add and refresh HAProxy's ssl cert list
+* HAProxy : Check config file && restart
 
--ra |--renew-all : 
-* renew what's needed for renewed domains
+-ra |--renew-all :
+* Renew what's needed for renewed domains
+* Regenerate .pem files for HAProxy
+* HAProxy : Check config file && restart
 
 -rev|--revoke [DOMAIN]
-* to be coded... any help welcome 
+* to be coded if needed
+
 ```

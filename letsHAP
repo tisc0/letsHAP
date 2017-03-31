@@ -26,14 +26,16 @@ Options
 -a  |--add [DOMAIN]
 * Add certs files for the domain
 * Create renewal config file for that domain
-* Add and refresh HAPROXY's ssl cert list
-* HAPROXY : Check config file && restart
+* Add and refresh HAProxy's ssl cert list
+* HAProxy : Check config file && restart
 
--ra |--renew-all : 
-* renew what's needed for renewed domains
+-ra |--renew-all :
+* Renew what's needed for renewed domains
+* Regenerate .pem files for HAProxy
+* HAProxy : Check config file && restart
 
 -rev|--revoke [DOMAIN]
-* to be coded... any help welcome
+* to be coded if needed
 
 ...
 
@@ -120,7 +122,7 @@ _add_cert_for_domain (){
 	myDomain="$1"
 	# the magic
 	echo -n "Let's create your cert for $myDomain... "
-	create_cert=$(certbot certonly --standalone --preferred-challenges ${PREFERRED_CHALLENGE} --${CERTBOT_BK_NAME} ${BK_PORT} --noninteractive -d ${myDomain})
+	create_cert=$(certbot certonly --preferred-challenges ${PREFERRED_CHALLENGE} --${CERTBOT_BK_NAME} ${BK_PORT} --noninteractive -d ${myDomain})
         is_success=$(echo $?)
         if [ "$is_success" = '0' ]
         then
@@ -161,8 +163,7 @@ _create_haproxy_fullchain (){
 
 _renew_domains(){
 	echo "**** Renewing all domains **** "
-	#renew=$(certbot renew --http-01-port 63443)
-	renew=$(certbot renew --standalone --preferred-challenges ${PREFERRED_CHALLENGE} --${CERTBOT_BK_NAME} ${BK_PORT})
+	renew=$(certbot renew --preferred-challenges ${PREFERRED_CHALLENGE} --${CERTBOT_BK_NAME} ${BK_PORT})
 	is_success=$(echo $?)
 	if [ "$is_success" = '0' ]
 	then
