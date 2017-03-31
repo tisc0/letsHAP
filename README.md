@@ -5,7 +5,8 @@ To enable auto renew, add a line in /etc/crontab (or via crontab -e as root) :
 
 `` *       23      *       *       *       root    letsHAP --renew-all ``
 
-``
+
+ ```
  ~ Usage : $0 [Option] [PARAM]
 
  Beware : First start, you have to run $0 --register [EMAIL]
@@ -26,6 +27,5 @@ Options
 * renew what's needed for renewed domains
 
 -rev|--revoke [DOMAIN]
-* to be coded... any help welcome
-
-``
+* to be coded... any help welcome 
+```
