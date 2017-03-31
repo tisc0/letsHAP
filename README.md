@@ -7,9 +7,9 @@ To enable auto renew, add a line in /etc/crontab (or via crontab -e as root) :
 
 
  ```
- ~ Usage : $0 [Option] [PARAM]
+ ~ Usage : letsHAP [Option] [PARAM]
 
- Beware : First start, you have to run $0 --register [EMAIL]
+ Beware : First start, you have to run letsHAP --register [EMAIL]
 
 Options
 -------
