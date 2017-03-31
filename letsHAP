@@ -5,7 +5,7 @@
 ##################################################
 
 ###
-### That program need you to create a specific backend 
+### That program needs you to create a specific backend 
 ### in haproxy's configfile.
 ###
 
