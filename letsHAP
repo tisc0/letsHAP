@@ -61,7 +61,9 @@ check_argv1_f
 ### GLOBALS ###
 ###############
 DATE=$(date +%Y%m%d-%H%M%S)
-WORKING_DIR="/etc/letsencrypt"
+WORKING_DIR='/etc/letsencrypt'
+HAPX_CONFFILE='/etc/haproxy/haproxy-base.conf'
+HAPX_INSTANCE='haproxy@base' # use 'haproxy' if only one instance exists (default haproxy install)
 HAPX_CERTDIR='/etc/haproxy/ssl'
 HAPX_CERTLIST='/etc/haproxy/ssl/ssl.lst'
 LETS_LIVE_PATH='/etc/letsencrypt/live'
@@ -114,7 +116,7 @@ _register(){
 		func_usage
 		exit 1
 	else
-			certbot register --agree-tos -m ${email}
+			certbot register --no-eff-email --agree-tos -m ${email}
 	fi
 }
 
@@ -122,7 +124,8 @@ _add_cert_for_domain (){
 	myDomain="$1"
 	# the magic
 	echo -n "Let's create your cert for $myDomain... "
-	create_cert=$(certbot certonly --preferred-challenges ${PREFERRED_CHALLENGE} --${CERTBOT_BK_NAME} ${BK_PORT} --noninteractive -d ${myDomain})
+	echo "here we are"
+	create_cert=$(certbot certonly --standalone --preferred-challenges ${PREFERRED_CHALLENGE} --${CERTBOT_BK_NAME} ${BK_PORT} --noninteractive -d ${myDomain})
         is_success=$(echo $?)
         if [ "$is_success" = '0' ]
         then
@@ -158,12 +161,12 @@ _create_haproxy_fullchain (){
 	sed -i "/${domain}/d" ${HAPX_CERTLIST}
 	echo "${WORKING_DIR}/live/${domain}/fullchain_haproxy.pem ${domain}" >> ${HAPX_CERTLIST} && echo OK || echo NOK
 	# We restart haproxy for immediate production of the domain
-	_restart_haproxy
+	_restart_haproxy "${HAPX_CONFFILE}" "${HAPX_INSTANCE}"
 }
 
 _renew_domains(){
 	echo "**** Renewing all domains **** "
-	renew=$(certbot renew --preferred-challenges ${PREFERRED_CHALLENGE} --${CERTBOT_BK_NAME} ${BK_PORT})
+	renew=$(certbot renew --standalone --preferred-challenges ${PREFERRED_CHALLENGE} --${CERTBOT_BK_NAME} ${BK_PORT})
 	is_success=$(echo $?)
 	if [ "$is_success" = '0' ]
 	then
@@ -177,13 +180,15 @@ _renew_domains(){
 }
 
 _restart_haproxy (){
-	check_conf=$(/usr/sbin/haproxy -f /etc/haproxy/haproxy.cfg -c)
+	conffile="$1"
+	instance="${2}"
+	check_conf=$(/usr/sbin/haproxy -f ${conffile} -c)
 	is_success=$(echo $?)
 	if [ $is_success -eq '0' ]
 	then
 		echo -n "Restarting haproxy (stop & start)... "
-		systemctl stop haproxy.service || echo -n "(Problem while stopping haproxy.service)... "
-		systemctl start haproxy.service && echo OK || echo NOK
+		systemctl stop ${instance}.service || echo -n "(Problem while stopping ${instance}.service)... "
+		systemctl start ${instance}.service && echo OK || echo NOK
 	else
 		echo "Problem with HAPROXY config file - exit"
 		exit 1
@@ -221,7 +226,7 @@ _update_haproxy_fullchains (){
 		done
 
 		# We need to restart HAPROXY, of course
-		_restart_haproxy
+		_restart_haproxy "${HAPX_CONFFILE}" "${HAPX_INSTANCE}"
 
 	else
 		echo "Nothing to update - exit"
