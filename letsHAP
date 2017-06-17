@@ -142,25 +142,27 @@ _add_cert_for_domain (){
 
 _create_haproxy_fullchain (){
 	domain="${1}"
-	if [ ! -d "${WORKING_DIR}/archive/${domain}" ]
+	fullchainFileHAP="${LETS_ARCH_PATH}/${domain}/fullchain_haproxy.pem"
+	fullchainFile="${LETS_LIVE_PATH}/${domain}/fullchain.pem"
+	privkeyFile="${LETS_LIVE_PATH}/${domain}/privkey.pem"
+	if [ ! -d "${LETS_ARCH_PATH}/${domain}" ]
 	then 
 		echo "Domain ${domain} has no certificate installed on this server - exit"
 		exit 1
 	fi
-	fullchainFile=${WORKING_DIR}/archive/${domain}/fullchain_haproxy.pem
 	echo "Creating HAPROXY fullchain file for domain ${domain}... "
-        for file in cert.pem chain.pem privkey.pem
+        for file in "${fullchainFile}" "${privkeyFile}"
         do
 	        echo -n "cat $file : "
-        	cat ${LETS_LIVE_PATH}/${domain}/$file >> ${LETS_ARCH_PATH}/${domain}/fullchain_haproxy.pem && echo -n "OK " || echo -n "NOK - "
+        	cat $file >> ${fullchainFileHAP} && echo -n "OK " || echo -n "NOK - "
                 echo
 	done
 	echo -n "Creating symlink in live directory... "
-	ln -s ${fullchainFile} ${WORKING_DIR}/live/${domain}/ && echo OK || echo NOK
+	ln -s ${fullchainFileHAP} ${LETS_LIVE_PATH}/${domain}/ && echo OK || echo NOK
 	echo -n "Adding line in ${HAPX_CERTLIST}... "
 	sed -i "/${domain}/d" ${HAPX_CERTLIST}
-	echo "${WORKING_DIR}/live/${domain}/fullchain_haproxy.pem ${domain}" >> ${HAPX_CERTLIST} && echo OK || echo NOK
-	# We restart haproxy for immediate production of the domain
+	echo "${LETS_LIVE_PATH}/${domain}/fullchain_haproxy.pem ${domain}" >> ${HAPX_CERTLIST} && echo OK || echo NOK
+	# We restart haproxy for instant production use of the domain
 	_restart_haproxy "${HAPX_CONFFILE}" "${HAPX_INSTANCE}"
 }
 
@@ -197,6 +199,10 @@ _restart_haproxy (){
 
 _update_haproxy_fullchains (){
 	myOutputFile="$1"
+        fullchainFileHAP="${LETS_ARCH_PATH}/${domain}/fullchain_haproxy.pem"
+        fullchainFile="${LETS_LIVE_PATH}/${domain}/fullchain.pem"
+        privkeyFile="${LETS_LIVE_PATH}/${domain}/privkey.pem"
+
 	fullchainsToRenew=$( cat ${myOutputFile} | grep letsencrypt | grep success | awk '{print $1}')
 	if [ "$fullchainsToRenew" != '' ]
 	then
@@ -204,23 +210,22 @@ _update_haproxy_fullchains (){
 		for cert in $fullchainsToRenew
 		do
 			echo "Fullchain to renew -> $cert"
-			fqdn=$(echo $cert | cut -d'/' -f 5)
+			domain=$(echo $cert | cut -d'/' -f 5)
 			# Backup the old fullchain file and freeing the file
-			echo -n "Backup the old fullchain file of $fqdn : "
-			fullchain_file="/etc/letsencrypt/archive/$fqdn/fullchain_haproxy.pem"
-			if [ -f "${fullchain_file}" ]
+			echo -n "Backup the old fullchain file of $domain : "
+			if [ -f "${fullchainFileHAP}" ]
 			then
-				mv ${LETS_ARCH_PATH}/$fqdn/fullchain_haproxy.pem ${LETS_ARCH_PATH}/$fqdn/fullchain_haproxy.pem.$DATE && echo OK || echo NOK
+				mv ${fullchainFileHAP} ${fullchainFileHAP}.${DATE} && echo OK || echo NOK
 			else
 				echo "doesn't exist - next"
 			fi
 
 			# generate the new one
 			echo "Generating the new one... "
-			for file in cert.pem chain.pem privkey.pem
+			for file in ${fullchainFile} ${privkeyFile} 
 			do
 				echo -n "cat $file : "
-				cat ${LETS_LIVE_PATH}/${fqdn}/$file >> ${LETS_ARCH_PATH}/$fqdn/fullchain_haproxy.pem && echo -n "OK " || echo -n "NOK - "
+				cat ${file} >> ${fullchainFileHAP} && echo -n "OK " || echo -n "NOK - "
 				echo
 			done
 		done
