@@ -9,19 +9,21 @@ To enable auto renew, add a line in /etc/crontab (or via crontab -e as root) :
  ```
  ~ Usage : letsHAP [Option] [PARAM]
 
- Beware : First start, you have to run letsHAP --register [EMAIL]
+ Beware : First start, you have to run $0 --register [EMAIL]
 
 Options
 -------
+-dry | --dry-run
+* Simulation mode
 
 -re | --register [EMAIL]
-* Create /etc/letsencrypt directory after creating your account on let's Encrypt
+* Create your account on let's Encrypt and /etc/letsencrypt directory
 
 -a  |--add [DOMAIN]
-* Add certs files for the domain
-* Create renewal config file for that domain
-* Add and refresh HAProxy's ssl cert list
-* HAProxy : Check config file && restart
+* Create and install certificate for one or multiple domains (SAN - max renewal : 200/week)
+* Create renewal config file(s) for  domain(s)
+* Add and refresh HAProxy's ssl cert list  
+* Check config file && restart HAProxy
 
 -ra |--renew-all :
 * Renew what's needed for renewed domains
@@ -30,5 +32,6 @@ Options
 
 -rev|--revoke [DOMAIN]
 * to be coded if needed
+
 
 ```
