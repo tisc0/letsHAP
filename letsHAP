@@ -6,7 +6,7 @@
 
 ###
 ### This program needs you to create a specific backend 
-### in haproxy's configfile (cf README.md).
+### in haproxy's configfile (cf haproxy.cfg example).
 ###
 
 # Help
