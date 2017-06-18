@@ -8,17 +8,22 @@
 ### That program needs you to create a specific backend 
 ### in haproxy's configfile.
 ###
+#var1="$1"
+#var2="$2"
+#var3="$3"
 
 # Help
 func_usage(){
 cat << EOF
 
- ~ Usage : $0 [Option] [PARAM]
+ ~ Usage : $0 [Options] [PARAM]
 
  Beware : First start, you have to run $0 --register [EMAIL]
 
 Options
 -------
+-dry | --dry-run
+* Simulate behavior. Have to be passed as first ARGV
 
 -re | --register [EMAIL]
 * Create /etc/letsencrypt directory after creating your account on let's Encrypt
@@ -42,20 +47,20 @@ Options
 EOF
 }
 
-var1="$1"
-var2="$2"
-
 # We need at least 1 argument
 check_argv1_f(){
-        if [[ ("${var1}" == '') ]]
+        if [[ ( "${var1}" == '') ]]
         then
+		echo $var1
+		echo "here we are"
                 func_usage
 		echo "Parameter's missing ; at least one is needed - exit"
                 exit 1
         fi
 }
 # Check vars
-check_argv1_f
+#check_argv1_f
+
 
 ###############
 ### GLOBALS ###
@@ -63,7 +68,7 @@ check_argv1_f
 DATE=$(date +%Y%m%d-%H%M%S)
 WORKING_DIR='/etc/letsencrypt'
 HAPX_CONFFILE='/etc/haproxy/haproxy-base.conf'
-HAPX_INSTANCE='haproxy@base' # use 'haproxy' if only one instance exists (default haproxy install)
+HAPX_INSTANCE='haproxy@base' # use 'haproxy' if only one instance exists (like out of the box)
 HAPX_CERTDIR='/etc/haproxy/ssl'
 HAPX_CERTLIST='/etc/haproxy/ssl/ssl.lst'
 LETS_LIVE_PATH='/etc/letsencrypt/live'
@@ -74,36 +79,53 @@ PREFERRED_CHALLENGE='http-01'
 CERTBOT_BK_NAME="http-01-port"
 BK_PORT='63443'
 
-# Else, we define more precisely the case of action
+# Our cases of action
 
-case ${var1} in
-	-re | --register)
-		todo='register'
-		shift
-		REGISTERING_EMAIL="${1}"
-		;;
-        -a |--add)
-                todo="add"
-                shift
-		domainToAdd="${var2}"
-        	;;
-        -ra |--renew-all)
-                todo="renew-all"
-                shift
-        	;;
-        -rev|--revoke)
-                todo="revoke"
-                shift
-		domainToRevoke="${var2}"
-        	;;
-	-h| --help)
-		func_usage
-		;;
-        *)
-                func_usage
-        	;;
-esac
+## Adding dry-run 
+#case ${var3} in
+#        -dry | --dry-run)
+#                dryrun='--dry-run'
+#                echo $dryrun
+#                ;;
+#        *)
+                
+#        	;;
+#esac
 
+for argv1 in "$@"
+do
+	case ${argv1} in
+		-re | --register)
+			todo='register'
+			REGISTERING_EMAIL="$2"
+			shift
+			;;
+		-a |--add)
+			todo="add"
+			domainToAdd="$2"
+			shift
+			;;
+		-ra |--renew-all)
+			todo="renew-all"
+			shift
+			;;
+		-rev|--revoke)
+			todo="revoke"
+			domainToRevoke="$2"
+			shift
+			;;
+		-dry | --dry-run)
+			dryrun='--dry-run'
+			shift
+			;;
+		-h| --help)
+			func_usage
+			;;
+#		*)
+#			func_usage
+#			;;
+	esac
+done
 
 #################
 ### FUNCTIONS ###
@@ -125,7 +147,11 @@ _add_cert_for_domain (){
 	# the magic
 	echo -n "Let's create your cert for $myDomain... "
 	echo "here we are"
-	create_cert=$(certbot certonly --standalone --preferred-challenges ${PREFERRED_CHALLENGE} --${CERTBOT_BK_NAME} ${BK_PORT} --noninteractive -d ${myDomain})
+
+	# --expand allow to add domains/SANs to an existing certificate
+	# --allow-subset-of-names tells Certbot to continue with certificate generation if only some of the specified domain authorizations can be obtained. This may be useful if some domains specified in a certificate no longer point at this system.
+	# the comma separated format for -d $domains is also supported by HAProxy ssl.lst
+	create_cert=$(certbot certonly ${dryrun} --expand --standalone --preferred-challenges ${PREFERRED_CHALLENGE} --${CERTBOT_BK_NAME} ${BK_PORT} --noninteractive -d ${myDomain})
         is_success=$(echo $?)
         if [ "$is_success" = '0' ]
         then
@@ -141,34 +167,48 @@ _add_cert_for_domain (){
 }
 
 _create_haproxy_fullchain (){
+	# Can be multiple domains comma separated
 	domain="${1}"
-	fullchainFileHAP="${LETS_ARCH_PATH}/${domain}/fullchain_haproxy.pem"
-	fullchainFile="${LETS_LIVE_PATH}/${domain}/fullchain.pem"
-	privkeyFile="${LETS_LIVE_PATH}/${domain}/privkey.pem"
-	if [ ! -d "${LETS_ARCH_PATH}/${domain}" ]
+	# autocertname will be the DIR name in let's ARCH and LIVE dirs
+	autocertname=$(echo ${domain} | cut -d',' -f1)
+
+	# Those might be global VARS...
+	fullchainFileHAP="${LETS_ARCH_PATH}/${autocertname}/fullchain_haproxy.pem"
+	fullchainFile="${LETS_LIVE_PATH}/${autocertname}/fullchain.pem"
+	privkeyFile="${LETS_LIVE_PATH}/${autocertname}/privkey.pem"
+
+	# Checking if that domain/autocertname's DIR exists
+	if [ ! -d "${LETS_ARCH_PATH}/${autocertname}" ]
 	then 
-		echo "Domain ${domain} has no certificate installed on this server - exit"
+		echo "Domain(s) ${domain} has no certificate installed on this server - exit"
 		exit 1
 	fi
-	echo "Creating HAPROXY fullchain file for domain ${domain}... "
-        for file in "${fullchainFile}" "${privkeyFile}"
-        do
-	        echo -n "cat $file : "
-        	cat $file >> ${fullchainFileHAP} && echo -n "OK " || echo -n "NOK - "
-                echo
-	done
+	# Overwrite HAP fullchain if exists (should not :])
+	echo "Creating HAPROXY fullchain file for domain(s) ${domain}... "
+        cat "${fullchainFile}" "${privkeyFile}" > ${fullchainFileHAP} && echo -n "OK " || echo -n "NOK - "
+        echo
+
+	# Symlink the new fullchain file in let's live dir
 	echo -n "Creating symlink in live directory... "
-	ln -s ${fullchainFileHAP} ${LETS_LIVE_PATH}/${domain}/ && echo OK || echo NOK
-	echo -n "Adding line in ${HAPX_CERTLIST}... "
-	sed -i "/${domain}/d" ${HAPX_CERTLIST}
-	echo "${LETS_LIVE_PATH}/${domain}/fullchain_haproxy.pem ${domain}" >> ${HAPX_CERTLIST} && echo OK || echo NOK
+	if [ ! \(-L ${fullchainFileHAP} \) ] 
+	then
+		ln -s ${fullchainFileHAP} ${LETS_LIVE_PATH}/${autocertname}/ && echo OK || echo NOK
+	else
+		echo 'No need'
+	fi
+
+	# Feeding HAProxy ssl.lst
+	echo -n "Adding line(s) in ${HAPX_CERTLIST}... "
+	sed -i "/${autocertname}/d" "${HAPX_CERTLIST}"
+	echo "${LETS_LIVE_PATH}/${autocertname}/fullchain_haproxy.pem ${domain}" >> ${HAPX_CERTLIST} && echo OK || echo NOK
+
 	# We restart haproxy for instant production use of the domain
 	_restart_haproxy "${HAPX_CONFFILE}" "${HAPX_INSTANCE}"
 }
 
 _renew_domains(){
 	echo "**** Renewing all domains **** "
-	renew=$(certbot renew --standalone --preferred-challenges ${PREFERRED_CHALLENGE} --${CERTBOT_BK_NAME} ${BK_PORT})
+	renew=$(certbot renew ${dryrun} --standalone --preferred-challenges ${PREFERRED_CHALLENGE} --${CERTBOT_BK_NAME} ${BK_PORT})
 	is_success=$(echo $?)
 	if [ "$is_success" = '0' ]
 	then
@@ -199,9 +239,9 @@ _restart_haproxy (){
 
 _update_haproxy_fullchains (){
 	myOutputFile="$1"
-        fullchainFileHAP="${LETS_ARCH_PATH}/${domain}/fullchain_haproxy.pem"
-        fullchainFile="${LETS_LIVE_PATH}/${domain}/fullchain.pem"
-        privkeyFile="${LETS_LIVE_PATH}/${domain}/privkey.pem"
+        fullchainFileHAP="${LETS_ARCH_PATH}/${certname}/fullchain_haproxy.pem"
+        fullchainFile="${LETS_LIVE_PATH}/${certname}/fullchain.pem"
+        privkeyFile="${LETS_LIVE_PATH}/${certname}/privkey.pem"
 
 	fullchainsToRenew=$( cat ${myOutputFile} | grep letsencrypt | grep success | awk '{print $1}')
 	if [ "$fullchainsToRenew" != '' ]
@@ -210,7 +250,7 @@ _update_haproxy_fullchains (){
 		for cert in $fullchainsToRenew
 		do
 			echo "Fullchain to renew -> $cert"
-			domain=$(echo $cert | cut -d'/' -f 5)
+			certname=$(echo $cert | cut -d'/' -f 5)
 			# Backup the old fullchain file and freeing the file
 			echo -n "Backup the old fullchain file of $domain : "
 			if [ -f "${fullchainFileHAP}" ]
