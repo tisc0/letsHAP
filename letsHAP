@@ -62,8 +62,8 @@ check_argv1_f "$#"
 ###############
 DATE=$(date +%Y%m%d-%H%M%S)
 WORKING_DIR='/etc/letsencrypt'
-HAPX_CONFFILE='/etc/haproxy/haproxy-base.conf'
-HAPX_INSTANCE='haproxy@base' # use 'haproxy' if only one instance exists (like out of the box)
+HAPX_CONFFILE='/etc/haproxy/haproxy.cfg'
+HAPX_INSTANCE='haproxy' # use 'haproxy' if only one instance exists (like out of the box)
 HAPX_CERTDIR='/etc/haproxy/ssl'
 HAPX_CERTLIST='/etc/haproxy/ssl/ssl.lst'
 LETS_LIVE_PATH='/etc/letsencrypt/live'
@@ -185,7 +185,8 @@ _create_haproxy_fullchain (){
 
 	# Symlink the new fullchain file in let's live dir
 	echo -n "Creating symlink in live directory... "
-	if [ ! \(-L ${fullchainFileHAP} \) ] 
+	#if [ ! \(-L ${fullchainFileHAP} \) ] 
+	if ! test -L ${fullchainFileHAP} 
 	then
 		ln -s ${fullchainFileHAP} ${LETS_LIVE_PATH}/${autocertname}/ && echo OK || echo NOK
 	else
