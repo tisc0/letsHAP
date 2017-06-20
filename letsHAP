@@ -46,17 +46,15 @@ EOF
 
 # We need at least 1 argument
 check_argv1_f(){
-        if [[ ( "${var1}" == '') ]]
+        if [ "$1" -lt '1' ]
         then
-		echo $var1
-		echo "here we are"
                 func_usage
 		echo "Parameter's missing ; at least one is needed - exit"
                 exit 1
         fi
 }
 # Check vars
-#check_argv1_f
+check_argv1_f "$#"
 
 
 ###############
@@ -70,7 +68,7 @@ HAPX_CERTDIR='/etc/haproxy/ssl'
 HAPX_CERTLIST='/etc/haproxy/ssl/ssl.lst'
 LETS_LIVE_PATH='/etc/letsencrypt/live'
 LETS_ARCH_PATH='/etc/letsencrypt/archive'
-INSTALLED_DOMAINS="$(ls -d ${LETS_LIVE_PATH}/* | cut -d'/' -f 5)"
+INSTALLED_DOMAINS="$(test -d ${LETS_LIVE_PATH} && ls -d ${LETS_LIVE_PATH}/* | cut -d'/' -f 5)"
 OUTPUT_RD="${WORKING_DIR}/renewal/autorenew_domains.${DATE}"
 PREFERRED_CHALLENGE='http-01'
 CERTBOT_BK_NAME="http-01-port"
@@ -130,7 +128,7 @@ done
 
 _register(){
 	email="${1}"
-	if [[ -z "${REGISTERING_EMAIL}" ]] 
+	if [ -z "${REGISTERING_EMAIL}" ] 
 	then
 		func_usage
 		exit 1
@@ -281,10 +279,10 @@ _update_haproxy_fullchains (){
 ################
 
 # Create HAProxy ssl list file DIR
-if [[ ! -d "${HAPX_CERTDIR}" ]]
+if [ ! -d "${HAPX_CERTDIR}" ]
 then
 	read -p "Do you want to create ${HAPX_CERTDIR} ? [Y/n]" yn
-	yn=${yn:Y}
+	yn=${yn:n}
 	case $yn in
         	[Yy]* ) 
 			mkdir -p ${HAPX_CERTDIR} 
