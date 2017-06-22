@@ -3,7 +3,6 @@
 ##################################################
 ### letshap - David S. - 2016, 1st of October  ###
 ##################################################
-
 ###
 ### This program needs you to create a specific backend 
 ### in haproxy's configfile (cf haproxy.cfg example).
@@ -19,16 +18,16 @@ cat << EOF
 
 Options
 -------
--dry | --dry-run
+-dry |--dry-run
 * Simulation mode
 
--re | --register [EMAIL]
+-re |--register [EMAIL]
 * Create your account on let's Encrypt and /etc/letsencrypt directory
 
--a  |--add [DOMAIN]
+-a |--add [DOMAIN]
 * Create and install certificate for one or multiple domains (SAN - max renewal : 200/week)
 * Create renewal config file(s) for  domain(s)
-* Add and refresh HAProxy's ssl cert list
+* Add and refresh HAProxy's ssl cert list  
 * Check config file && restart HAProxy
 
 -ra |--renew-all :
@@ -36,25 +35,53 @@ Options
 * Regenerate .pem files for HAProxy
 * HAProxy : Check config file && restart
 
--rev|--revoke [DOMAIN]
-* to be coded if needed
+-rev |--revoke [CERTNAME]
+* Revoke in place a certificate (don't move any file) and all the SANs attached to it
+
+-del |--delete
+* Delete completely a cert chain
+* Clean up and restart HAProxy
+
+Error codes
+-----------
+exit 1 : Undefined error
+exit 2 : Certname doesn't exists
+exit 3 : Certificate already revoked
+exit 4 : Undefined revocation error
+exit 9 : Script's not enabled
 
 ...
 
 EOF
 }
 
-# We need at least 1 argument
+# We need at least $min argument
 check_argv1_f(){
-        if [ "$1" -lt '1' ]
+	min='1'
+        if [ "$1" -lt "$min" ]
         then
                 func_usage
-		echo "Parameter's missing ; at least one is needed - exit"
+		echo "Parameters are missing ; at least $min needed - exit"
                 exit 1
         fi
 }
-# Check vars
 check_argv1_f "$#"
+
+####################################
+### CUSTOMIZE AND ENABLE IT HERE ###
+####################################
+HAPX_CONFFILE='/etc/haproxy/haproxy.cfg' # Default : '/etc/haproxy/haproxy.cfg'
+HAPX_INSTANCE='haproxy' # Default : 'haproxy'
+HAPX_CERTDIR='/etc/haproxy/ssl'
+HAPX_CERTLIST='/etc/haproxy/ssl/ssl.lst'
+ENABLED='0'
+
+# Check if you read and customized this file, or die
+if [ "$ENABLED" != '1' ] 
+then
+	echo 'Some parameters have to be defined - Edit the script before use'
+	exit 9
+fi
 
 
 ###############
@@ -62,14 +89,10 @@ check_argv1_f "$#"
 ###############
 DATE=$(date +%Y%m%d-%H%M%S)
 WORKING_DIR='/etc/letsencrypt'
-HAPX_CONFFILE='/etc/haproxy/haproxy.cfg'
-HAPX_INSTANCE='haproxy' # use 'haproxy' if only one instance exists (like out of the box)
-HAPX_CERTDIR='/etc/haproxy/ssl'
-HAPX_CERTLIST='/etc/haproxy/ssl/ssl.lst'
 LETS_LIVE_PATH='/etc/letsencrypt/live'
 LETS_ARCH_PATH='/etc/letsencrypt/archive'
 INSTALLED_DOMAINS="$(test -d ${LETS_LIVE_PATH} && ls -d ${LETS_LIVE_PATH}/* | cut -d'/' -f 5)"
-OUTPUT_RD="${WORKING_DIR}/renewal/autorenew_domains.${DATE}"
+OUTPUT_RD="${WORKING_DIR}/renewal/letsHAP_autorenew_domains.${DATE}"
 PREFERRED_CHALLENGE='http-01'
 CERTBOT_BK_NAME="http-01-port"
 BK_PORT='63443'
@@ -107,7 +130,11 @@ do
 		-rev|--revoke)
 			todo="revoke"
 			domainToRevoke="$2"
-			shift
+			#shift
+			;;
+		-del|--delete)
+			todo="delete"
+			domainToDelete="$2"
 			;;
 		-dry | --dry-run)
 			dryrun='--dry-run'
@@ -141,21 +168,20 @@ _add_cert_for_domain (){
 	myDomain="$1"
 	# the magic
 	echo -n "Let's create your cert for $myDomain... "
-	echo "here we are"
 
 	# --expand allow to add domains/SANs to an existing certificate
 	# --allow-subset-of-names tells Certbot to continue with certificate generation if only some of the specified domain authorizations can be obtained. This may be useful if some domains specified in a certificate no longer point at this system.
 	# the comma separated format for -d $domains is also supported by HAProxy ssl.lst
-	create_cert=$(certbot certonly ${dryrun} --expand --standalone --preferred-challenges ${PREFERRED_CHALLENGE} --${CERTBOT_BK_NAME} ${BK_PORT} --noninteractive -d ${myDomain})
+	create_cert=$(certbot certonly -q ${dryrun} --expand --standalone --preferred-challenges ${PREFERRED_CHALLENGE} --${CERTBOT_BK_NAME} ${BK_PORT} --noninteractive -d ${myDomain} 2>&1)
         is_success=$(echo $?)
         if [ "$is_success" = '0' ]
         then
                 echo "OK"
-		echo -n "Updating HAPROXY certlist... "
+		echo "Updating HAPROXY certlist... "
 		
         else
                 echo "NOK - exit"
-		echo $create_cert
+		echo "$create_cert"
                 exit 1
         fi
 
@@ -204,14 +230,15 @@ _create_haproxy_fullchain (){
 
 _renew_domains(){
 	echo "**** Renewing all domains **** "
-	renew=$(certbot renew ${dryrun} --standalone --preferred-challenges ${PREFERRED_CHALLENGE} --${CERTBOT_BK_NAME} ${BK_PORT})
+	renew=$(certbot renew -q ${dryrun} --standalone --preferred-challenges ${PREFERRED_CHALLENGE} --${CERTBOT_BK_NAME} ${BK_PORT} 2>&1)
 	is_success=$(echo $?)
 	if [ "$is_success" = '0' ]
 	then
 		echo "$renew" > ${OUTPUT_RD}
 		echo "OK" 
 	else
-		echo "NOK - exit"
+		echo "NOK - Debug :"
+		echo "${renew}"
 		exit 1
 	fi
 
@@ -275,6 +302,57 @@ _update_haproxy_fullchains (){
 	fi
 }
 
+_revoke_cert(){
+	certname="${1}"
+	# Find it, or quit
+	certPath=$(find /etc/letsencrypt/live | grep "$certname" | grep cert.pem)
+	if [ "$certPath" == '' ]
+	then
+		echo "Certname ${certname} doesn't exist - exit"
+		exit 2
+	fi
+	# Actual revok-action
+	revoke="$(certbot revoke -q --cert-path "${certPath}" 2>&1)"
+	if [ "$?" != '0' ]
+	then
+		if [[ $(echo $revoke | grep 'Certificate already revoked') != '' ]]
+		then
+			echo "Certificate already revoked (${certname}) - exit 3"
+			exit 3
+		else
+			echo 'Something went bad with the revocation. Error message from certbot :'
+			echo $revoke
+			exit 4
+			fi
+	fi
+}
+
+_delete_cert(){
+	certname="${1}"
+        # Find it, or quit
+        certPath=$(find ${LETS_LIVE_PATH} | grep "$certname" | grep cert.pem)
+        if [ "$certPath" == '' ]
+        then
+                echo "Certname ${certname} doesn't exist - exit"
+                exit 2
+        fi
+        # Actual del-action
+        delete="$(certbot delete -q --cert-name "${certname}" 2>&1)"
+        if [ "$?" != '0' ]
+        then
+        	echo "Something went bad while deleting ${certname}. Error message from certbot :"
+                echo "$delete"
+                exit 1
+	else
+		echo "Deletion of $certname by certbot : OK"
+        fi
+	# Since we had haproxy fullchain, the directory can't be entirely deleted by certbot
+	echo -n "Manual deletion of $certname DIR ${LETS_LIVE_PATH}/${certname} : "
+	rm -Rf ${LETS_LIVE_PATH}/${certname} && echo OK || echo NOK
+
+}
+
+
 ################
 #### ACTION ####
 ################
@@ -315,8 +393,11 @@ fi
                 ;;
 
                 revoke)
-                        echo "Function revoke haven't been coded yet"
+			_revoke_cert $domainToRevoke
                 ;;
+		delete)
+			_delete_cert $domainToDelete
+		;;
                 *)
                         func_usage
                 ;;
