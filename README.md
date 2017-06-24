@@ -13,6 +13,9 @@ To enable auto renew, add a line in /etc/crontab (or via crontab -e as root) :
 ## HAProxy preparation
 We made it easy : you'll find the minimal to config your HAProxy in haproxy.cfg.
 
+## Usage
+You can get it with 'letHAP -h'
+
 
  ```
  ~ Usage : letsHAP [Option] [PARAM]
@@ -44,6 +47,9 @@ Options
 -del |--delete
 * Delete completely a cert chain
 * Clean up and restart HAProxy
+
+-h |--help
+* Getting this how to use details
 
 Error codes
 -----------

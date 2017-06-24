@@ -42,6 +42,9 @@ Options
 * Delete completely a cert chain
 * Clean up and restart HAProxy
 
+-h |--help
+* Getting this how to use details
+
 Error codes
 -----------
 exit 1 : Undefined error
