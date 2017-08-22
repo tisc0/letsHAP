@@ -35,6 +35,10 @@ Options
 * Create renewal config file(s) for  domain(s)
 * Add and refresh HAProxy's ssl cert list  
 * Check config file && restart HAProxy
+~ The certname will be the first domain of the list
+ex:
+letsHAP -a mydomain.com
+letsHAP -a mydomain1.com,mydomain2.com,www.mydomain1.com,www.mydomain2.com
 
 -ra |--renew-all :
 * Renew what's needed for renewed domains
@@ -43,6 +47,10 @@ Options
 
 -rev |--revoke [CERTNAME]
 * Revoke in place a certificate (don't move any file) and all the SANs attached to it
+~ The certname is either the domain of a single domain certificate, either the first domain of a list of certificates
+~ If you need to revoke the 'certname' domain, please revoke it entirely and recreate a SAN without it
+ex:
+letsHAP -rev mydomain1.com && letsHAP -a mydomain2.com,www.mydomain1.com,www.mydomain2.com
 
 -del |--delete
 * Delete completely a cert chain
