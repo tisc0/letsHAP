@@ -163,7 +163,7 @@ _register(){
 		func_usage
 		exit 1
 	else
-			certbot register --no-eff-email --agree-tos -m ${email}
+		certbot register --no-eff-email --agree-tos -m ${email}
 	fi
 }
 
@@ -177,7 +177,7 @@ _add_cert_for_domain (){
 	# --expand allow to add domains/SANs to an existing certificate
 	# --allow-subset-of-names tells Certbot to continue with certificate generation if only some of the specified domain authorizations can be obtained. This may be useful if some domains specified in a certificate no longer point at this system.
 	# the comma separated format for -d $domains is also supported by HAProxy ssl.lst
-	# Eventually, the comma separated doesn't work while tryiong to surf on the websites (a colleague tested, thks BYE)
+	# Eventually, the comma separated doesn't work while trying to surf on the websites (a colleague tested, thks BYE)
 	#create_cert=$(certbot certonly -q ${dryrun} --expand --standalone --preferred-challenges ${PREFERRED_CHALLENGE} --${CERTBOT_BK_NAME} ${BK_PORT} --noninteractive -d ${myDomain} 2>&1)
 	local create_cert=$(certbot certonly --cert-name ${autocertname} -q ${dryrun} --expand --standalone --preferred-challenges ${PREFERRED_CHALLENGE} --${CERTBOT_BK_NAME} ${BK_PORT} --noninteractive -d ${myDomain} 2>&1)
         local is_success=$(echo $?)
