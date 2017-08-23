@@ -237,7 +237,7 @@ _create_haproxy_fullchain (){
 	# Deleting all lines containing the certname [of the SAN]
 	sed -i "/${autocertname}/d" "${HAPX_CERTLIST}"
 	# Looping the domains (Seems haproxy actually needs one line per domain, even with the same cert, and even if the reload/restart of the process is OK [Navigator Error])
-	for domain in ${domains}
+	for domain in $(echo ${domains} | sed "s/,/ /g")
 	do
 		echo "${LETS_LIVE_PATH}/${autocertname}/fullchain_haproxy.pem ${domain}" >> ${HAPX_CERTLIST} && echo OK || echo NOK
 	done
