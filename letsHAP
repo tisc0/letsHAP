@@ -155,7 +155,6 @@ do
 		-s| --staging)
 			ENV_TEST='1'
 			shift
-			echo toto
 			;;
 #		*)
 #			func_usage
