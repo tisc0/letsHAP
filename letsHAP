@@ -152,6 +152,9 @@ do
 		-h| --help)
 			func_usage
 			;;
+		-s| --staging)
+			ENV_TEST='1'
+			;;
 #		*)
 #			func_usage
 #			;;
@@ -185,7 +188,12 @@ _add_cert_for_domain (){
 	# the comma separated format for -d $domains is also supported by HAProxy ssl.lst
 	# Eventually, the comma separated doesn't work while trying to surf on the websites (a colleague tested, thks BYE)
 	#create_cert=$(certbot certonly -q ${dryrun} --expand --standalone --preferred-challenges ${PREFERRED_CHALLENGE} --${CERTBOT_BK_NAME} ${BK_PORT} --noninteractive -d ${myDomain} 2>&1)
-	local create_cert=$(certbot certonly --cert-name ${autocertname} -q ${dryrun} --expand --standalone --preferred-challenges ${PREFERRED_CHALLENGE} --${CERTBOT_BK_NAME} ${BK_PORT} --noninteractive -d ${myDomain} 2>&1)
+	if [ "${ENV_TEST}" == '1' ]
+	then
+		local create_cert=$(certbot certonly --cert-name ${autocertname} -q ${dryrun} --expand --staging --noninteractive -d ${myDomain} 2>&1)
+	else
+		local create_cert=$(certbot certonly --cert-name ${autocertname} -q ${dryrun} --expand --standalone --preferred-challenges ${PREFERRED_CHALLENGE} --${CERTBOT_BK_NAME} ${BK_PORT} --noninteractive -d ${myDomain} 2>&1)
+	fi
         local is_success=$(echo $?)
         if [ "$is_success" = '0' ]
         then
