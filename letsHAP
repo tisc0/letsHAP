@@ -154,6 +154,7 @@ do
 			;;
 		-s| --staging)
 			ENV_TEST='1'
+			shift
 			;;
 #		*)
 #			func_usage
