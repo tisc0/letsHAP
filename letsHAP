@@ -83,7 +83,7 @@ HAPX_CONFFILE='/etc/haproxy/haproxy.cfg' # Default : '/etc/haproxy/haproxy.cfg'
 HAPX_INSTANCE='haproxy' # Default : 'haproxy'
 HAPX_CERTDIR='/etc/haproxy/ssl'
 HAPX_CERTLIST='/etc/haproxy/ssl/ssl.lst'
-ENABLED='0'
+ENABLED='1'
 
 # Check if you read and customized this file, or die
 if [ "$ENABLED" != '1' ] 
@@ -106,6 +106,7 @@ PREFERRED_CHALLENGE='http-01'
 CERTBOT_BK_NAME="http-01-port"
 BK_PORT='63443'
 STAGING=''
+FORCE_REGENERATE=''
 
 # Our cases of action
 
@@ -155,6 +156,10 @@ do
 			;;
 		-s| --staging)
 			STAGING='--staging'
+			shift
+			;;
+		-f| --forceRegenerate)
+			FORCE_REGENERATE='y'
 			shift
 			;;
 #		*)
@@ -253,8 +258,10 @@ _create_haproxy_fullchain (){
 
 _renew_domains(){
 	echo "**** Renewing all domains **** "
-	local renew=$(certbot renew -q ${dryrun} --standalone --preferred-challenges ${PREFERRED_CHALLENGE} --${CERTBOT_BK_NAME} ${BK_PORT} 2>&1)
+	#local renew=$(certbot renew -q ${dryrun} --standalone --preferred-challenges ${PREFERRED_CHALLENGE} --${CERTBOT_BK_NAME} ${BK_PORT} 2>&1)
+	local renew=$(certbot renew ${dryrun} --standalone --preferred-challenges ${PREFERRED_CHALLENGE} --${CERTBOT_BK_NAME} ${BK_PORT} 2>&1)
 	is_success=$(echo $?)
+	echo "DEBUG: is_success=${is_success}"
 	if [ "$is_success" = '0' ]
 	then
 		echo "$renew" > ${OUTPUT_RD}
@@ -288,12 +295,13 @@ _reload_haproxy (){
 
 _update_haproxy_fullchains (){
 	local myOutputFile="$1"
+	local forceRegenerate=$(echo "${2}" | cut -d'=' -f2)
         local fullchainFileHAP="${LETS_ARCH_PATH}/${certname}/fullchain_haproxy.pem"
         local fullchainFile="${LETS_LIVE_PATH}/${certname}/fullchain.pem"
         local privkeyFile="${LETS_LIVE_PATH}/${certname}/privkey.pem"
 
 	fullchainsToRenew=$( cat ${myOutputFile} | grep letsencrypt | grep success | awk '{print $1}')
-	if [ "$fullchainsToRenew" != '' ]
+	if [ "$fullchainsToRenew" != '' ] || [ "$forceRegenerate" = 'y'  ]
 	then
 		echo "*** Renewing fullchains for HAPROXY ***"
 		for cert in $fullchainsToRenew
@@ -306,11 +314,11 @@ _update_haproxy_fullchains (){
 			then
 				mv ${fullchainFileHAP} ${fullchainFileHAP}.${DATE} && echo OK || echo NOK
 			else
-				echo "doesn't exist - next"
+				echo "doesn't exist - no backup to be done "
 			fi
 
 			# generate the new one
-			echo "Generating the new one... "
+			echo "Generating the new one(s)... "
 			for file in ${fullchainFile} ${privkeyFile} 
 			do
 				echo -n "cat $file : "
@@ -323,7 +331,7 @@ _update_haproxy_fullchains (){
 		_reload_haproxy "${HAPX_CONFFILE}" "${HAPX_INSTANCE}"
 
 	else
-		echo "Nothing to update - exit"
+		echo "No HAProxy pem files to update - exit"
 		exit 0
 	fi
 }
@@ -415,7 +423,7 @@ fi
 
                 renew-all)
 			_renew_domains
-                        _update_haproxy_fullchains $OUTPUT_RD
+                        _update_haproxy_fullchains $OUTPUT_RD --forceRegenerate=${FORCE_REGENERATE}
                 ;;
 
                 revoke)
