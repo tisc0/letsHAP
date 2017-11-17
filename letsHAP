@@ -50,6 +50,9 @@ letsHAP -rev mydomain1.com && letsHAP -a mydomain2.com,www.mydomain1.com,www.myd
 * Delete completely a cert chain
 * Clean up and restart HAProxy
 
+-f| --forceRegenerate
+* Used with --dry-run, permit to force the renewal of haproxy chain files
+
 -h |--help
 * Getting this how to use details
 
@@ -83,7 +86,7 @@ HAPX_CONFFILE='/etc/haproxy/haproxy.cfg' # Default : '/etc/haproxy/haproxy.cfg'
 HAPX_INSTANCE='haproxy' # Default : 'haproxy'
 HAPX_CERTDIR='/etc/haproxy/ssl'
 HAPX_CERTLIST='/etc/haproxy/ssl/ssl.lst'
-ENABLED='1'
+ENABLED='0'
 
 # Check if you read and customized this file, or die
 if [ "$ENABLED" != '1' ] 
@@ -261,10 +264,11 @@ _renew_domains(){
 	#local renew=$(certbot renew -q ${dryrun} --standalone --preferred-challenges ${PREFERRED_CHALLENGE} --${CERTBOT_BK_NAME} ${BK_PORT} 2>&1)
 	local renew=$(certbot renew ${dryrun} --standalone --preferred-challenges ${PREFERRED_CHALLENGE} --${CERTBOT_BK_NAME} ${BK_PORT} 2>&1)
 	is_success=$(echo $?)
-	echo "DEBUG: is_success=${is_success}"
+	#echo "DEBUG: is_success=${is_success}"
 	if [ "$is_success" = '0' ]
 	then
 		echo "$renew" > ${OUTPUT_RD}
+		echo "$renew" 
 		echo "OK" 
 	else
 		echo "NOK - Debug :"
@@ -296,20 +300,24 @@ _reload_haproxy (){
 _update_haproxy_fullchains (){
 	local myOutputFile="$1"
 	local forceRegenerate=$(echo "${2}" | cut -d'=' -f2)
-        local fullchainFileHAP="${LETS_ARCH_PATH}/${certname}/fullchain_haproxy.pem"
-        local fullchainFile="${LETS_LIVE_PATH}/${certname}/fullchain.pem"
-        local privkeyFile="${LETS_LIVE_PATH}/${certname}/privkey.pem"
 
 	fullchainsToRenew=$( cat ${myOutputFile} | grep letsencrypt | grep success | awk '{print $1}')
+	#echo "DEBUG fullchainsToRenew=${fullchainsToRenew}"
 	if [ "$fullchainsToRenew" != '' ] || [ "$forceRegenerate" = 'y'  ]
 	then
 		echo "*** Renewing fullchains for HAPROXY ***"
 		for cert in $fullchainsToRenew
 		do
-			echo "Fullchain to renew -> $cert"
 			local certname=$(echo $cert | cut -d'/' -f 5)
+        		local fullchainFileHAP="${LETS_ARCH_PATH}/${certname}/fullchain_haproxy.pem"
+		        local fullchainFile="${LETS_LIVE_PATH}/${certname}/fullchain.pem"
+		        local privkeyFile="${LETS_LIVE_PATH}/${certname}/privkey.pem"
+
+			echo "Fullchain to renew -> $cert"
 			# Backup the old fullchain file and freeing the file
-			echo -n "Backup the old fullchain file of $domain : "
+			echo "Backup the old fullchain file of ${certname} : "
+			#echo "DEBUG: fullchainFileHAP= ${fullchainFileHAP}"
+			#echo "DEBUG: certname= ${certname}"
 			if [ -f "${fullchainFileHAP}" ]
 			then
 				mv ${fullchainFileHAP} ${fullchainFileHAP}.${DATE} && echo OK || echo NOK
