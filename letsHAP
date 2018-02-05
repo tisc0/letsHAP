@@ -110,6 +110,7 @@ CERTBOT_BK_NAME="http-01-port"
 BK_PORT='63443'
 STAGING=''
 FORCE_REGENERATE=''
+OTHER_SERVICES_TO_RELOAD='dovecot postfix'
 
 # Our cases of action
 
@@ -337,6 +338,8 @@ _update_haproxy_fullchains (){
 
 		# We need to restart HAPROXY, of course
 		_reload_haproxy "${HAPX_CONFFILE}" "${HAPX_INSTANCE}"
+		# And the other services
+		_manage_services
 
 	else
 		echo "No HAProxy pem files to update - exit"
@@ -394,6 +397,28 @@ _delete_cert(){
 
 }
 
+_reload_service(){
+	local service="$1"
+	# Check if service is enabled
+	echo -n "Is service ${service} enabled: "
+	local check=$(systemctl --quiet is-enabled ${service})
+       	if [ "$?" = '0' ]
+       	then
+		echo YES
+		echo -n "Let's restart it: "
+		systemctl --quiet reload ${service} && echo OK || echo NOK
+	else
+		echo 'NO - Nothing to do'
+	fi
+	
+}
+
+_manage_services(){
+	for service in $OTHER_SERVICES_TO_RELOAD
+	do
+		_reload_service ${service}
+	done
+}
 
 ################
 #### ACTION ####
@@ -427,6 +452,7 @@ fi
                 add)
                 	_add_cert_for_domain ${domainToAdd}
 			_create_haproxy_fullchain ${domainToAdd}
+			_manage_services
                 ;;
 
                 renew-all)
@@ -436,9 +462,11 @@ fi
 
                 revoke)
 			_revoke_cert $domainToRevoke
+			_manage_services
                 ;;
 		delete)
 			_delete_cert $domainToDelete
+			_manage_services
 		;;
                 *)
                         func_usage
