@@ -392,7 +392,7 @@ _delete_cert(){
                 exit 1
 	else
 		echo "Deletion of $certname by certbot : OK"
-		echo -n "Deletion from ${HAPX_CERTLIST}"
+		echo "Deletion from ${HAPX_CERTLIST} :"
 		_remove_cert_from_haproxy_lst $certname "$list_SANs" && echo OK || echo NOK
         fi
 	# Since we had haproxy fullchain, the directory can't be entirely deleted by certbot
@@ -409,7 +409,7 @@ _remove_cert_from_haproxy_lst(){
 	if [[ "${list_SANs}" != '' ]]
 	then
 		# First we backup the ssl.lst file
-		HAPX_CERTLIST_BAK=$(${HAPX_CERTLIST}.${DATE})
+		HAPX_CERTLIST_BAK="${HAPX_CERTLIST}.${DATE}"
 		cp ${HAPX_CERTLIST} ${HAPX_CERTLIST_BAK}
 		# then we delete the line by domain in ssl.lst
 		for san in ${list_SANs}
