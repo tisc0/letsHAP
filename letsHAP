@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 
 ##################################################
-### letshap - David S. - 2016, 1st of October  ###
+### letsHAP - David S. - 2016, 1st of October  ###
 ##################################################
 ###
 ### This program needs you to create a specific backend 
@@ -23,6 +23,9 @@ Options
 
 -re |--register [EMAIL]
 * Create your account on let's Encrypt and /etc/letsencrypt directory
+
+-res |--register-staging [EMAIL]
+* Create your STAGING account on let's Encrypt - Required for test certificates (--testcert)
 
 -a |--add [DOMAIN]
 * Create and install certificate for one or multiple domains (SAN - max renewal : 200/week)
@@ -53,6 +56,9 @@ letsHAP -rev mydomain1.com && letsHAP -a mydomain2.com,www.mydomain1.com,www.myd
 -f| --forceRegenerate
 * Used with --dry-run, permit to force the renewal of haproxy chain files
 
+-t | --test-cert
+* Create a test certificate - Require to be registered with a staging account
+
 -h |--help
 * Getting this how to use details
 
@@ -63,6 +69,19 @@ exit 2 : Certname doesn't exists
 exit 3 : Certificate already revoked
 exit 4 : Undefined revocation error
 exit 9 : Script's not enabled
+
+Examples:
+---------
+# Production registering account
+$0 -re my@address.tld
+# Staging registering account
+$0 -res my@address.tld
+# Create SAN
+$0 -a domain.tld,www.domain.tld
+# Create test cert
+$0 -t -a domain2.tld,www.domain2.tld
+# Delete certname && clean HAProxy ssl file
+$0 -del domain2.tld
 
 EOF
 }
@@ -86,7 +105,7 @@ HAPX_CONFFILE='/etc/haproxy/haproxy.cfg' # Default : '/etc/haproxy/haproxy.cfg'
 HAPX_INSTANCE='haproxy' # Default : 'haproxy'
 HAPX_CERTDIR='/etc/haproxy/ssl'
 HAPX_CERTLIST='/etc/haproxy/ssl/ssl.lst'
-ENABLED='0'
+ENABLED='1'
 
 # Check if you read and customized this file, or die
 if [ "$ENABLED" != '1' ] 
@@ -112,63 +131,58 @@ STAGING=''
 FORCE_REGENERATE=''
 OTHER_SERVICES_TO_RELOAD='dovecot postfix'
 
-# Our cases of action
-
-## Adding dry-run 
-#case ${var3} in
-#        -dry | --dry-run)
-#                dryrun='--dry-run'
-#                echo $dryrun
-#                ;;
-#        *)
-                
-#        	;;
-#esac
-
+##########################
+### WALKING PARAMETERS ###
+##########################
 for argv1 in "$@"
 do
 	case ${argv1} in
-		-re | --register)
+		-re  | --register)
 			todo='register'
 			REGISTERING_EMAIL="$2"
-			shift
+			shift 2
 			;;
-		-a |--add)
+		-res | --register-staging)
+			todo='register'
+			REGISTERING_EMAIL="$2"
+			STAGING='--staging'
+			shift 2
+			;;
+		-a   |--add)
 			todo="add"
 			domainToAdd="$2"
-			shift
+			shift 2
 			;;
-		-ra |--renew-all)
+		-ra  |--renew-all)
 			todo="renew-all"
 			shift
 			;;
-		-rev|--revoke)
+		-rev |--revoke)
 			todo="revoke"
 			domainToRevoke="$2"
-			#shift
+			shift 2
 			;;
-		-del|--delete)
+		-del |--delete)
 			todo="delete"
 			domainToDelete="$2"
+			shift 2
 			;;
 		-dry | --dry-run)
 			dryrun='--dry-run'
 			shift
 			;;
-		-h| --help)
+		-h   | --help)
 			func_usage
 			;;
-		-s| --staging)
-			STAGING='--staging'
-			shift
-			;;
-		-f| --forceRegenerate)
+		-f   | --forceRegenerate)
 			FORCE_REGENERATE='y'
 			shift
 			;;
-#		*)
-#			func_usage
-#			;;
+		-t   | --testcert)
+			echo 'Staging Mode (test cert)'
+			TESTCERT='--test-cert'
+			shift
+			;;
 	esac
 done
 
@@ -198,8 +212,7 @@ _add_cert_for_domain (){
 	# --allow-subset-of-names tells Certbot to continue with certificate generation if only some of the specified domain authorizations can be obtained. This may be useful if some domains specified in a certificate no longer point at this system.
 	# the comma separated format for -d $domains is also supported by HAProxy ssl.lst
 	# Eventually, the comma separated doesn't work while trying to surf on the websites (a colleague tested, thks BYE)
-	#create_cert=$(certbot certonly -q ${dryrun} --expand --standalone --preferred-challenges ${PREFERRED_CHALLENGE} --${CERTBOT_BK_NAME} ${BK_PORT} --noninteractive -d ${myDomain} 2>&1)
-	create_cert=$(certbot certonly --cert-name ${autocertname} -q ${dryrun} --expand --standalone --preferred-challenges ${PREFERRED_CHALLENGE} --${CERTBOT_BK_NAME} ${BK_PORT} --noninteractive ${STAGING} -d ${myDomain} 2>&1)
+	create_cert=$(certbot certonly --cert-name ${autocertname} -q ${dryrun} --expand --standalone --preferred-challenges ${PREFERRED_CHALLENGE} --${CERTBOT_BK_NAME} ${BK_PORT} --noninteractive ${TESTCERT} -d ${myDomain} 2>&1)
         local is_success=$(echo $?)
         if [ "$is_success" = '0' ]
         then
@@ -471,32 +484,41 @@ then
 			;;
 	esac
 fi
+
+# Check if staging account only, then push --test-cert option automatically
+
+if ([ "$(ls -l ${WORKING_DIR}/accounts/ | tail -2 | grep staging)" != '' ] \
+&& [ "$(ls -l ${WORKING_DIR}/accounts/ | wc -l)" -eq '1' ]) 
+then
+	echo "Auto Staging Mode"
+	TESTCERT='--test-cert'
+fi
 	
-        case $todo in
-		register)
-			_register ${REGISTERING_EMAIL}
-			;;
-                add)
-                	_add_cert_for_domain ${domainToAdd}
-			_create_haproxy_fullchain ${domainToAdd}
-			_manage_services
-                ;;
-
-                renew-all)
-			_renew_domains
-                        _update_haproxy_fullchains $OUTPUT_RD --forceRegenerate=${FORCE_REGENERATE}
-                ;;
-
-                revoke)
-			_revoke_cert $domainToRevoke
-			_manage_services
-                ;;
-		delete)
-			_delete_cert $domainToDelete
-			_manage_services
+case $todo in
+	register)
+		_register ${REGISTERING_EMAIL}
 		;;
-                *)
-                        func_usage
-                ;;
-        esac
+        add)
+                _add_cert_for_domain ${domainToAdd}
+		_create_haproxy_fullchain ${domainToAdd}
+		_manage_services
+        ;;
+
+        renew-all)
+		_renew_domains
+                _update_haproxy_fullchains $OUTPUT_RD --forceRegenerate=${FORCE_REGENERATE}
+        ;;
+
+        revoke)
+		_revoke_cert $domainToRevoke
+		_manage_services
+        ;;
+	delete)
+		_delete_cert $domainToDelete
+		_manage_services
+	;;
+        *)
+                func_usage
+        ;;
+esac
 

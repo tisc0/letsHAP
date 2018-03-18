@@ -30,10 +30,13 @@ Options
 -re |--register [EMAIL]
 * Create your account on let's Encrypt and /etc/letsencrypt directory
 
+-res |--register-staging [EMAIL]
+* Create your STAGING account on let's Encrypt - Required for test certificates (--testcert)
+
 -a |--add [DOMAIN]
 * Create and install certificate for one or multiple domains (SAN - max renewal : 200/week)
 * Create renewal config file(s) for  domain(s)
-* Add and refresh HAProxy's ssl cert list  
+* Add and refresh HAProxy's ssl cert list
 * Check config file && restart HAProxy
 ~ The certname will be the first domain of the list
 ex:
@@ -56,6 +59,12 @@ letsHAP -rev mydomain1.com && letsHAP -a mydomain2.com,www.mydomain1.com,www.myd
 * Delete completely a cert chain
 * Clean up and restart HAProxy
 
+-f| --forceRegenerate
+* Used with --dry-run, permit to force the renewal of haproxy chain files
+
+-t | --test-cert
+* Create a test certificate - Require to be registered with a staging account
+
 -h |--help
 * Getting this how to use details
 
@@ -67,5 +76,17 @@ exit 3 : Certificate already revoked
 exit 4 : Undefined revocation error
 exit 9 : Script's not enabled
 
+Examples:
+---------
+# Production registering account
+$0 -re my@address.tld
+# Staging registering account
+$0 -res my@address.tld
+# Create SAN 
+$0 -a domain.tld,www.domain.tld
+# Create test cert
+$0 -t -a domain2.tld,www.domain2.tld
+# Delete certname && clean HAProxy ssl file 
+$0 -del domain2.tld
 
 ```
