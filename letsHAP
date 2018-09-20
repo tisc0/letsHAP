@@ -7,6 +7,8 @@
 ### This program needs you to create a specific backend 
 ### in haproxy's configfile (cf haproxy.cfg example).
 ###
+### v0.3 - Adding management of certificates from a node in a cluster, 
+### behind a proxy, with rsync as publisher
 
 # Help
 func_usage(){
@@ -37,10 +39,13 @@ ex:
 letsHAP -a mydomain.com
 letsHAP -a mydomain1.com,mydomain2.com,www.mydomain1.com,www.mydomain2.com
 
--ra |--renew-all :
+-ra |--renew-all
 * Renew what's needed for renewed domains
 * Regenerate .pem files for HAProxy
 * HAProxy : Check config file && restart
+
+-rl |--reload-only
+* Reload Haproxy service with all the necessary checks to not break it if something's wrong
 
 -rev |--revoke [CERTNAME]
 * Revoke in place a certificate (don't move any file) and all the SANs attached to it
@@ -58,6 +63,9 @@ letsHAP -rev mydomain1.com && letsHAP -a mydomain2.com,www.mydomain1.com,www.myd
 
 -t | --test-cert
 * Create a test certificate - Require to be registered with a staging account
+
+-lh | --letshub
+* switch to letsHUB context (specific DIRs, no local haproxy restarted)
 
 -h |--help
 * Getting this how to use details
@@ -101,19 +109,6 @@ check_argv1_f "$#"
 ####################################
 ### CUSTOMIZE AND ENABLE IT HERE ###
 ####################################
-HAPX_CONFFILE='/etc/haproxy/haproxy.cfg' # Default : '/etc/haproxy/haproxy.cfg'
-HAPX_INSTANCE='haproxy' # Default : 'haproxy'
-HAPX_CERTDIR='/etc/haproxy/ssl'
-HAPX_CERTLIST='/etc/haproxy/ssl/ssl.lst'
-ENABLED='1'
-
-# Check if you read and customized this file, or die
-if [ "$ENABLED" != '1' ] 
-then
-	echo 'Some parameters have to be defined - Edit the script before use'
-	exit 9
-fi
-
 
 ###############
 ### GLOBALS ###
@@ -126,10 +121,60 @@ INSTALLED_DOMAINS="$(test -d ${LETS_LIVE_PATH} && ls -d ${LETS_LIVE_PATH}/* | cu
 OUTPUT_RD="${WORKING_DIR}/renewal/letsHAP_autorenew_domains.${DATE}"
 PREFERRED_CHALLENGE='http-01'
 CERTBOT_BK_NAME="http-01-port"
-BK_PORT='63443'
+BK_PORT='63444'
 STAGING=''
 FORCE_REGENERATE=''
 OTHER_SERVICES_TO_RELOAD='dovecot postfix'
+
+
+## Global Variables in a function to source later
+_source_paths_variables(){
+	local autocertname="${1}"
+	if [[ "${LETSHUB}" == 'yes' ]]
+	then
+		HAPX_CONFFILE=''
+		HAPX_INSTANCE=''
+		HAPX_CERTDIR='/home/letsHUB'
+		HAPX_REMOTE_CERTLIST_NAME='ssl2.lst'
+		HAPX_REMOTE_CERTDIR='/etc/haproxy/ssl/letsHUB'
+		HAPX_CERTLIST="${HAPX_CERTDIR}/${HAPX_REMOTE_CERTLIST_NAME}"
+		HAP_PEM_PATH="${HAPX_CERTDIR}"
+		PROXY_IP='' 
+		RSYNC_PASSWORD_FILE='' # ex: '/root/rsyncpass' with chmod 600
+		RSYNC_USER='rsync'
+		REMOTE_DIR='letsencrypt' # whatever you set up on the destination rsyncd conf file
+		fullchainFileHAP="${HAPX_REMOTE_CERTDIR}/fullchain_haproxy_${autocertname}.pem"
+		fullchainFile="${LETS_LIVE_PATH}/${autocertname}/fullchain.pem"
+		privkeyFile="${LETS_LIVE_PATH}/${autocertname}/privkey.pem"
+	else
+		HAPX_CONFFILE='/etc/haproxy/haproxy.cfg' # Default : '/etc/haproxy/haproxy.cfg'
+		HAPX_INSTANCE='haproxy' # Default : 'haproxy'
+		HAPX_CERTDIR='/etc/haproxy/ssl'
+		HAPX_CERTLIST="${HAPX_CERTDIR}/ssl.lst"
+		HAP_PEM_PATH="${LETS_LIVE_PATH}"
+		fullchainFileHAP="${LETS_ARCH_PATH}/${autocertname}/fullchain_haproxy.pem"
+		fullchainFile="${LETS_LIVE_PATH}/${autocertname}/fullchain.pem"
+		privkeyFile="${LETS_LIVE_PATH}/${autocertname}/privkey.pem"
+	fi
+
+	# Whatever happened, we create HAPX_CERTDIR
+	if [ ! -d "${HAPX_CERTDIR}" ] && [ -n "${HAPX_CERTDIR}" ] 
+	then
+		mkdir -p ${HAPX_CERTDIR}
+		chmod -R o-rwx ${HAPX_CERTDIR}
+	fi
+}
+
+LETSHUB='no' #Change this value via command line option (-lh)
+ENABLED='1'
+
+# Check if you read and customized this file, or die
+if [ "$ENABLED" != '1' ] 
+then
+	echo 'Some parameters have to be defined - Edit the script before use'
+	exit 9
+fi
+
 
 ##########################
 ### WALKING PARAMETERS ###
@@ -183,8 +228,17 @@ do
 			TESTCERT='--test-cert'
 			shift
 			;;
+		-rl  | --reload)
+			todo="reload"	
+			shift
+			;;
+		-lh  | --letshub)
+			LETSHUB='yes'
+			shift
+			;;
 	esac
 done
+
 
 #################
 ### FUNCTIONS ###
@@ -217,7 +271,7 @@ _add_cert_for_domain (){
         if [ "$is_success" = '0' ]
         then
                 echo "OK"
-		echo "Updating HAPROXY certlist... "
+		echo "We need to update HAPROXY certlist now... "
 		
         else
                 echo "NOK - exit"
@@ -231,46 +285,52 @@ _create_haproxy_fullchain (){
 	# Can be multiple domains comma separated
 	local domains="${1}"
 	# autocertname will be the DIR name in let's ARCH and LIVE dirs
-	local autocertname=$(echo ${domains} | cut -d',' -f1)
+	local certname=$(echo ${domains} | cut -d',' -f1)
 
 	# Those might be global VARS...
-	local fullchainFileHAP="${LETS_ARCH_PATH}/${autocertname}/fullchain_haproxy.pem"
-	local fullchainFile="${LETS_LIVE_PATH}/${autocertname}/fullchain.pem"
-	local privkeyFile="${LETS_LIVE_PATH}/${autocertname}/privkey.pem"
+	#local fullchainFileHAP="${LETS_ARCH_PATH}/${autocertname}/fullchain_haproxy.pem"
+	#local fullchainFile="${LETS_LIVE_PATH}/${autocertname}/fullchain.pem"
+	#local privkeyFile="${LETS_LIVE_PATH}/${autocertname}/privkey.pem"
+	_source_paths_variables ${certname}
 
 	# Checking if that domain/autocertname's DIR exists
-	if [ ! -d "${LETS_ARCH_PATH}/${autocertname}" ]
+	if [ ! -d "${LETS_ARCH_PATH}/${certname}" ]
 	then 
-		echo "Domain(s) ${domains} has no certificate installed on this server - exit"
+		echo "No certificate found for certname ${certname} - exit"
 		exit 1
 	fi
 	# Overwrite HAP fullchain if exists (should not :])
-	echo "Creating HAPROXY fullchain file for domain(s) ${domains}... "
+	echo "Creating HAPROXY fullchain file for certname ${certname} (full SAN : ${domains})... "
         cat "${fullchainFile}" "${privkeyFile}" > ${fullchainFileHAP} && echo -n "OK " || echo -n "NOK - "
         echo
 
-	# Symlink the new fullchain file in let's live dir
-	echo -n "Creating symlink in live directory... "
-	#if [ ! \(-L ${fullchainFileHAP} \) ] 
-	if ! test -L ${fullchainFileHAP} 
+	# Symlink the new fullchain file in letsencrypt live dir
+	if [ "${LETSUB}" == 'no' ]
 	then
-		ln -s ${fullchainFileHAP} ${LETS_LIVE_PATH}/${autocertname}/ && echo OK || echo NOK
-	else
-		echo 'No need'
+		echo -n "Creating symlink in live directory... "
+		if ! test -L ${fullchainFileHAP} 
+		then
+			ln -s ${fullchainFileHAP} ${LETS_LIVE_PATH}/${certname}/ && echo OK || echo NOK
+		else
+			echo 'No need'
+		fi
 	fi
+
+	# Deleting all lines containing the certname [of the SAN] in cert list
+	sed -i "/${certname}/d" "${HAPX_CERTLIST}"
 
 	# Feeding HAProxy ssl.lst
 	echo -n "Adding line(s) in ${HAPX_CERTLIST}... "
-	# Deleting all lines containing the certname [of the SAN]
-	sed -i "/${autocertname}/d" "${HAPX_CERTLIST}"
-	# Looping the domains (Seems haproxy actually needs one line per domain, even with the same cert, and even if the reload/restart of the process is OK [Navigator Error])
+	# Looping the domains (Seems haproxy actually needs one line per domain in the SAN, even with the same cert, and even if the reload/restart of the process is OK [Navigator Error])
 	for domain in $(echo ${domains} | sed "s/,/ /g")
 	do
-		echo "${LETS_LIVE_PATH}/${autocertname}/fullchain_haproxy.pem ${domain}" >> ${HAPX_CERTLIST} && echo OK || echo NOK
+		echo "${fullchainFileHAP} ${domain}" >> ${HAPX_CERTLIST} && echo OK || echo NOK
 	done
 
 	# We restart haproxy for instant production use of the domains
-	_reload_haproxy "${HAPX_CONFFILE}" "${HAPX_INSTANCE}"
+	#-> now in todo cases - only if LETSHUB=no
+	# Return code to confirm services can be reloaded
+	return 66
 }
 
 _renew_domains(){
@@ -278,7 +338,6 @@ _renew_domains(){
 	#local renew=$(certbot renew -q ${dryrun} --standalone --preferred-challenges ${PREFERRED_CHALLENGE} --${CERTBOT_BK_NAME} ${BK_PORT} 2>&1)
 	local renew=$(certbot renew ${dryrun} --standalone --preferred-challenges ${PREFERRED_CHALLENGE} --${CERTBOT_BK_NAME} ${BK_PORT} 2>&1)
 	is_success=$(echo $?)
-	#echo "DEBUG: is_success=${is_success}"
 	if [ "$is_success" = '0' ]
 	then
 		echo "$renew" > ${OUTPUT_RD}
@@ -316,22 +375,20 @@ _update_haproxy_fullchains (){
 	local forceRegenerate=$(echo "${2}" | cut -d'=' -f2)
 
 	fullchainsToRenew=$( cat ${myOutputFile} | grep letsencrypt | grep success | awk '{print $1}')
-	#echo "DEBUG fullchainsToRenew=${fullchainsToRenew}"
-	if [ "$fullchainsToRenew" != '' ] || [ "$forceRegenerate" = 'y'  ]
+	if [ -n "$fullchainsToRenew" ] || [ "$forceRegenerate" = 'y'  ]
 	then
 		echo "*** Renewing fullchains for HAPROXY ***"
 		for cert in $fullchainsToRenew
 		do
 			local certname=$(echo $cert | cut -d'/' -f 5)
-        		local fullchainFileHAP="${LETS_ARCH_PATH}/${certname}/fullchain_haproxy.pem"
-		        local fullchainFile="${LETS_LIVE_PATH}/${certname}/fullchain.pem"
-		        local privkeyFile="${LETS_LIVE_PATH}/${certname}/privkey.pem"
+        		#local fullchainFileHAP="${LETS_ARCH_PATH}/${certname}/fullchain_haproxy.pem"
+		        #local fullchainFile="${LETS_LIVE_PATH}/${certname}/fullchain.pem"
+		        #local privkeyFile="${LETS_LIVE_PATH}/${certname}/privkey.pem"
+			_source_paths_variables ${certname}
 
 			echo "Fullchain to renew -> $cert"
 			# Backup the old fullchain file and freeing the file
 			echo "Backup the old fullchain file of ${certname} : "
-			#echo "DEBUG: fullchainFileHAP= ${fullchainFileHAP}"
-			#echo "DEBUG: certname= ${certname}"
 			if [ -f "${fullchainFileHAP}" ]
 			then
 				mv ${fullchainFileHAP} ${fullchainFileHAP}.${DATE} && echo OK || echo NOK
@@ -350,9 +407,11 @@ _update_haproxy_fullchains (){
 		done
 
 		# We need to restart HAPROXY, of course
-		_reload_haproxy "${HAPX_CONFFILE}" "${HAPX_INSTANCE}"
+		#-> in todo cases since letshub
 		# And the other services
-		_manage_services
+		#-> in todo cases since letshub
+		# Return code to confirm services can be reloaded
+		return 66
 
 	else
 		echo "No HAProxy pem files to update - exit"
@@ -386,6 +445,7 @@ _revoke_cert(){
 }
 
 _delete_cert(){
+	echo "DEBUG : deleting a cert..."
 	local certname="${1}"
         # Find it, or quit
         local certPath=$(find ${LETS_LIVE_PATH} | grep "$certname" | grep cert.pem)
@@ -394,9 +454,13 @@ _delete_cert(){
                 echo "Certname ${certname} doesn't exist - exit"
                 exit 2
         fi
+
+	_source_paths_variables ${certname}
+
         # Actual del-action
 	# We get SANs list before we delete the chain
 	local list_SANs=$(certbot certificates 2>/dev/null | grep -A 1 "Certificate Name: $certname" | tail -1 | awk -F ":" '{print $2}')
+	echo "DEBUG list_SANs = $list_SANs "
         local delete="$(certbot delete -q --cert-name "${certname}" 2>&1)"
         if [ "$?" != '0' ]
         then
@@ -411,6 +475,9 @@ _delete_cert(){
 	# Since we had haproxy fullchain, the directory can't be entirely deleted by certbot
 	echo -n "Manual deletion of $certname DIR ${LETS_LIVE_PATH}/${certname} : "
 	rm -Rf ${LETS_LIVE_PATH}/${certname} && echo OK || echo NOK
+
+	# Return code to confirm services can be reloaded
+	return 66
 
 }
 
@@ -431,7 +498,7 @@ _remove_cert_from_haproxy_lst(){
 			sed -i "/${san}/d" ${HAPX_CERTLIST} && echo OK || echo NOK
 		done
 		# We reload HAProxy safely
-		_reload_haproxy "${HAPX_CONFFILE}" "${HAPX_INSTANCE}"
+		# -> in todo cases since letshub
 
 	fi
 
@@ -454,39 +521,44 @@ _reload_service(){
 }
 
 _manage_services(){
-	for service in $OTHER_SERVICES_TO_RELOAD
-	do
-		_reload_service ${service}
-	done
+	if [[ -n "${OTHER_SERVICES_TO_RELOAD}" ]]
+	then
+		for service in $OTHER_SERVICES_TO_RELOAD
+		do
+			_reload_service ${service}
+		done
+	fi
+}
+
+_push_certs_on_proxy_via_rsync(){
+	local RSYNC_PASSWORD_FILE="${1}" 
+	local HAPX_CERTDIR="${2}"
+	local RSYNC_USER="${3}"
+	local PROXY_IP="${4}"
+	local REFRESH_FILE='to_refresh.txt'
+	local PUBLISHING_CMD="rsync -avP --delete --exclude=*.pem.* --exclude=ssl2.lst.* --password-file ${RSYNC_PASSWORD_FILE} ${HAPX_CERTDIR}/ ${RSYNC_USER}@${PROXY_IP}::${REMOTE_DEST}"
+
+	if [ -n "${PUBLISHING_CMD}" ] && [ -n "${HAPX_CERTDIR}" ]
+	then
+		echo -n "Updating refresh file : "
+		echo 'yes' >  ${HAPX_CERTDIR}/${REFRESH_FILE} && echo OK || echo NOK
+		echo "Pushing certs on proxy... "
+		${PUBLISHING_CMD} && echo OK || echo NOK
+		#echo " PUBLISHING_CMD = ${PUBLISHING_CMD}"
+	else
+		echo "PUBLISHING_CMD is empty - no sync with proxy - exit"
+		exit 1
+	fi
 }
 
 ################
 #### ACTION ####
 ################
 
-# Create HAProxy ssl list file DIR
-if [ ! -d "${HAPX_CERTDIR}" ]
-then
-	read -p "Do you want to create ${HAPX_CERTDIR} ? [Y/n]" yn
-	yn=${yn:n}
-	case $yn in
-        	[Yy]* ) 
-			mkdir -p ${HAPX_CERTDIR} 
-			;;
-
-	        [Nn]* ) 
-			exit 
-			;;
-
- 	       * ) 
-		      	echo " ~~ 0_o ~~ " 
-			exit
-			;;
-	esac
-fi
+# Source it once and for all ?!
+_source_paths_variables
 
 # Check if staging account only, then push --test-cert option automatically
-
 if ([ "$(ls -l ${WORKING_DIR}/accounts/ | tail -2 | grep staging)" != '' ] \
 && [ "$(ls -l ${WORKING_DIR}/accounts/ | wc -l)" -eq '1' ]) 
 then
@@ -499,24 +571,56 @@ case $todo in
 		_register ${REGISTERING_EMAIL}
 		;;
         add)
-                _add_cert_for_domain ${domainToAdd}
+	        _add_cert_for_domain ${domainToAdd}
 		_create_haproxy_fullchain ${domainToAdd}
-		_manage_services
+		if [[ "${LETSHUB}" == 'no' ]]
+		then
+			if [[ "$?" == '66' ]]
+			then
+				_reload_haproxy "${HAPX_CONFFILE}" "${HAPX_INSTANCE}"
+				_manage_services
+			fi
+		else
+			_push_certs_on_proxy_via_rsync ${RSYNC_PASSWORD_FILE} ${HAPX_CERTDIR} ${RSYNC_USER} ${PROXY_IP}
+		fi
         ;;
 
         renew-all)
 		_renew_domains
                 _update_haproxy_fullchains $OUTPUT_RD --forceRegenerate=${FORCE_REGENERATE}
+		if [[ "${LETSHUB}" == 'no' ]]
+		then
+			if [[ "$?" == '66' ]]
+			then
+				_reload_haproxy "${HAPX_CONFFILE}" "${HAPX_INSTANCE}"
+				_manage_services
+			fi
+		else
+			_push_certs_on_proxy_via_rsync ${RSYNC_PASSWORD_FILE} ${HAPX_CERTDIR} ${RSYNC_USER} ${PROXY_IP}	
+		fi
         ;;
 
         revoke)
 		_revoke_cert $domainToRevoke
-		_manage_services
+		#_manage_services
         ;;
+
 	delete)
 		_delete_cert $domainToDelete
-		_manage_services
+		if [[ "${LETSHUB}" == 'no' ]]
+		then
+			if [[ "$?" == '66' ]]
+			then
+				_reload_haproxy "${HAPX_CONFFILE}" "${HAPX_INSTANCE}"
+				_manage_services
+			fi
+		else
+			_push_certs_on_proxy_via_rsync ${RSYNC_PASSWORD_FILE} ${HAPX_CERTDIR} ${RSYNC_USER} ${PROXY_IP}
+		fi
 	;;
+	reload)
+		_reload_haproxy "${HAPX_CONFFILE}" "${HAPX_INSTANCE}"
+	;;	
         *)
                 func_usage
         ;;
