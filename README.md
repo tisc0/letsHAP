@@ -4,6 +4,7 @@ Easy manage letsencrypt certificates in HAProxy environment
 ## Install
 - Edit letsHAP script file and customize it (HAProxy instance name + conf file), and enable it.
 - make install (will copy letsHAP in /usr/local/bin/letsHAP)
+- After your first certificate installation, replace the https bind line with the proper one (see haproxy.cfg example file)
 
 ## Auto-renew
 To enable auto renew, add a line in /etc/crontab (or via crontab -e as root) :
