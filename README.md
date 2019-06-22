@@ -1,5 +1,5 @@
 # letsHAP
-Easy manage letsencrypt certificates in HAProxy environment
+Easy manage letsencrypt certificates in HAProxy environment. Tested only in Centos 7.
 
 ## Install
 - Edit letsHAP script file and customize it (HAProxy instance name + conf file), and enable it.
