@@ -459,7 +459,8 @@ _delete_cert(){
 
         # Actual del-action
 	# We get SANs list before we delete the chain
-	local list_SANs=$(certbot certificates 2>/dev/null | grep -A 1 "Certificate Name: $certname" | tail -1 | awk -F ":" '{print $2}')
+	#local list_SANs=$(certbot certificates 2>/dev/null | grep -A 1 "Certificate Name: $certname" | tail -1 | awk -F ":" '{print $2}')
+	local list_SANs=$(certbot certificates 2>/dev/null | grep -A 3 "Certificate Name: $certname" | tail -3 | grep Domains | awk -F ":" '{print $2}'| sed --expression 's/^ //')
 	echo "DEBUG list_SANs = $list_SANs "
         local delete="$(certbot delete -q --cert-name "${certname}" 2>&1)"
         if [ "$?" != '0' ]
