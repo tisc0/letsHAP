@@ -574,9 +574,10 @@ case $todo in
         add)
 	        _add_cert_for_domain ${domainToAdd}
 		_create_haproxy_fullchain ${domainToAdd}
+		EXIT_CODE="$?"
 		if [[ "${LETSHUB}" == 'no' ]]
 		then
-			if [[ "$?" == '66' ]]
+			if [[ "$EXIT_CODE" == '66' ]]
 			then
 				_reload_haproxy "${HAPX_CONFFILE}" "${HAPX_INSTANCE}"
 				_manage_services
@@ -589,9 +590,10 @@ case $todo in
         renew-all)
 		_renew_domains
                 _update_haproxy_fullchains $OUTPUT_RD --forceRegenerate=${FORCE_REGENERATE}
+		EXIT_CODE="$?"
 		if [[ "${LETSHUB}" == 'no' ]]
 		then
-			if [[ "$?" == '66' ]]
+			if [[ "$EXIT_CODE" == '66' ]]
 			then
 				_reload_haproxy "${HAPX_CONFFILE}" "${HAPX_INSTANCE}"
 				_manage_services
@@ -608,9 +610,10 @@ case $todo in
 
 	delete)
 		_delete_cert $domainToDelete
+		EXIT_CODE="$?"
 		if [[ "${LETSHUB}" == 'no' ]]
 		then
-			if [[ "$?" == '66' ]]
+			if [[ "$EXIT_CODE" == '66' ]]
 			then
 				_reload_haproxy "${HAPX_CONFFILE}" "${HAPX_INSTANCE}"
 				_manage_services
