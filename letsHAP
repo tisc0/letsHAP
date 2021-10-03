@@ -576,7 +576,7 @@ case $todo in
 		EXIT_CODE="$?"
 		if [[ "${LETSHUB}" == 'no' ]]
 		then
-			if [[ "${EXIT_CODE}" == '66' ]]
+			if [[ "$EXIT_CODE" == '66' ]]
 			then
 				_reload_haproxy "${HAPX_CONFFILE}" "${HAPX_INSTANCE}"
 				_manage_services
@@ -592,7 +592,7 @@ case $todo in
 		EXIT_CODE="$?"
 		if [[ "${LETSHUB}" == 'no' ]]
 		then
-			if [[ "${EXIT_CODE}" == '66' ]]
+			if [[ "$EXIT_CODE" == '66' ]]
 			then
 				_reload_haproxy "${HAPX_CONFFILE}" "${HAPX_INSTANCE}"
 				_manage_services
@@ -612,7 +612,7 @@ case $todo in
 		EXIT_CODE="$?"
 		if [[ "${LETSHUB}" == 'no' ]]
 		then
-			if [[ "${EXIT_CODE}" == '66' ]]
+			if [[ "$EXIT_CODE" == '66' ]]
 			then
 				_reload_haproxy "${HAPX_CONFFILE}" "${HAPX_INSTANCE}"
 				_manage_services
