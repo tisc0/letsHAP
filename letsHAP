@@ -374,7 +374,12 @@ _update_haproxy_fullchains (){
 	local myOutputFile="$1"
 	local forceRegenerate=$(echo "${2}" | cut -d'=' -f2)
 
-	fullchainsToRenew=$( cat ${myOutputFile} | grep letsencrypt | grep success | awk '{print $1}')
+	if [ "$forceRegenerate" = 'y'  ]
+        then
+                fullchainsToRenew=$( cat ${myOutputFile} | grep letsencrypt | grep -E 'success|skipped' | awk '{print $1}')
+        else
+                fullchainsToRenew=$( cat ${myOutputFile} | grep letsencrypt | grep success | awk '{print $1}')
+        fi
 	if [ -n "$fullchainsToRenew" ] || [ "$forceRegenerate" = 'y'  ]
 	then
 		echo "*** Renewing fullchains for HAPROXY ***"
